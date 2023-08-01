@@ -45,6 +45,7 @@ pub mod aper;
 pub mod ber;
 pub mod cer;
 pub mod der;
+pub mod oer;
 pub mod uper;
 
 #[doc(inline)]
