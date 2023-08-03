@@ -186,7 +186,7 @@ mod tests {
                 tag: crate::Tag,
                 _: Constraints,
             ) -> Result<(), EN::Error> {
-                encoder.encode_set::<Self, _>(tag, |encoder| {
+                _ = encoder.encode_set::<Self, _>(tag, |encoder| {
                     self.age.encode(encoder)?;
                     self.name.encode(encoder)?;
                     Ok(())
