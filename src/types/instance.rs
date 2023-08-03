@@ -36,9 +36,9 @@ impl<T: crate::Encode> crate::Encode for InstanceOf<T> {
         tag: Tag,
         _: Constraints,
     ) -> core::result::Result<(), EN::Error> {
-        encoder.encode_sequence::<Self, _>(tag, |sequence| {
+        _ = encoder.encode_sequence::<Self, _>(tag, |sequence| {
             self.type_id.encode(sequence)?;
-            sequence.encode_explicit_prefix(Tag::new(Class::Context, 0), &self.value)?;
+            _ = sequence.encode_explicit_prefix(Tag::new(Class::Context, 0), &self.value)?;
             Ok(())
         })?;
 

@@ -110,7 +110,7 @@ impl Encoder {
     }
 
     pub fn set_bit(&mut self, tag: Tag, bit: bool) -> Result<()> {
-        self.field_bitfield.entry(tag).and_modify(|(_, b)| *b = bit);
+        _ = self.field_bitfield.entry(tag).and_modify(|(_, b)| *b = bit);
         Ok(())
     }
 
@@ -572,7 +572,7 @@ impl Encoder {
         }
 
         if self.options.set_encoding {
-            self.set_output.insert(tag, set_buffer);
+            _ = self.set_output.insert(tag, set_buffer);
         }
     }
 
@@ -615,7 +615,7 @@ impl Encoder {
         value: &num_bigint::BigInt,
         buffer: &mut BitString,
     ) -> Result<()> {
-        self.encode_extensible_bit(&constraints, buffer, || {
+        _ = self.encode_extensible_bit(&constraints, buffer, || {
             constraints.value().map_or(false, |value_range| {
                 value_range.extensible.is_some() && value_range.constraint.bigint_contains(value)
             })
@@ -1057,7 +1057,7 @@ impl crate::Encoder for Encoder {
         let tag = (encode_fn)(&mut choice_encoder)?;
         let is_root_extension = crate::TagTree::tag_contains(&tag, E::VARIANTS);
 
-        self.encode_extensible_bit(&constraints, &mut buffer, || is_root_extension);
+        _ = self.encode_extensible_bit(&constraints, &mut buffer, || is_root_extension);
         let variants = crate::types::variants::Variants::from_static(if is_root_extension {
             E::VARIANTS
         } else {

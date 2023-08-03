@@ -236,7 +236,8 @@ impl Encoder {
     /// the output by the tag of each value.
     fn encode_to_set(&mut self, tag: Tag) {
         if self.is_set_encoding {
-            self.set_buffer
+            _ = self
+                .set_buffer
                 .insert(tag, core::mem::take(&mut self.output));
         }
     }

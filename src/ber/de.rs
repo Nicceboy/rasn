@@ -447,7 +447,7 @@ impl<'input> crate::Decoder for Decoder<'input> {
             let mut items = types::SetOf::new();
 
             while let Ok(item) = D::decode(decoder) {
-                items.insert(item);
+                _ = items.insert(item);
             }
 
             Ok(items)

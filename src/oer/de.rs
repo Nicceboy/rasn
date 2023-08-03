@@ -4,6 +4,7 @@
 // the encoding itself without knowledge of the type being encoded ITU-T X.696 (6.2).
 mod config;
 
+#[allow(dead_code)]
 pub struct Decoder<'input> {
     input: &'input [u8],
     // config: DecoderOptions,
