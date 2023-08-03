@@ -1,0 +1,6 @@
+b src/oer/enc.rs:136
+b src/oer/enc.rs:46
+b src/oer/enc.rs:55
+b src/oer/enc.rs:77
+run --test  oer::enc::tests::test_encode_integer_manual_setup --exact --show-output
+# frame variable

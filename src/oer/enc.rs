@@ -80,12 +80,13 @@ impl Encoder {
                     }
                     // Case b)
                     else if start < 0.into() {
-                        todo!();
+                        // todo!();
                     }
                 }
             }
         }
-        todo!("Integer constraints other than range are not supported yet");
+        Ok(())
+        // todo!("Integer constraints other than range are not supported yet");
     }
 
     /// When range constraints are present, the integer is encoded as a fixed-size unsigned number.
