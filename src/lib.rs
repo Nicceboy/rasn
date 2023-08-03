@@ -1,5 +1,6 @@
 #![doc = include_str!("../README.md")]
 // #![no_std]
+#![warn(unused_results)]
 extern crate alloc;
 
 mod per;
