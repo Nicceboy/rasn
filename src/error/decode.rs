@@ -5,7 +5,7 @@ use jzon::JsonValue;
 use snafu::{Backtrace, GenerateImplicitData, Snafu};
 
 use crate::de::Error;
-use crate::types::{variants::Variants, Class, Tag};
+use crate::types::{variants::Variants, Tag};
 use crate::Codec;
 
 /// Variants for every codec-specific `DecodeError` kind.
@@ -148,6 +148,10 @@ impl DecodeError {
             DecodeErrorKind::AlphabetConstraintNotSatisfied { reason },
             codec,
         )
+    }
+    #[must_use]
+    pub fn discriminant_value_not_found(discriminant: isize, codec: Codec) -> Self {
+        Self::from_kind(Kind::DiscriminantValueNotFound { discriminant }, codec)
     }
     #[must_use]
     pub fn range_exceeds_platform_width(needed: u32, present: u32, codec: Codec) -> Self {
@@ -351,6 +355,11 @@ pub enum DecodeErrorKind {
         /// The error's message.
         msg: alloc::string::String,
     },
+    #[snafu(display("Discriminant value '{}' did not match any variant", discriminant))]
+    DiscriminantValueNotFound {
+        /// The found value of the discriminant
+        discriminant: isize,
+    },
     #[snafu(display("Duplicate field for `{}`", name))]
     DuplicateField {
         /// The field's name.
@@ -489,11 +498,6 @@ pub enum DecodeErrorKind {
 #[snafu(visibility(pub))]
 #[non_exhaustive]
 pub enum BerDecodeErrorKind {
-    #[snafu(display("Discriminant value '{}' did not match any variant", discriminant))]
-    DiscriminantValueNotFound {
-        /// The found value of the discriminant
-        discriminant: isize,
-    },
     #[snafu(display("Indefinite length encountered but not allowed."))]
     IndefiniteLengthNotAllowed,
     #[snafu(display("Invalid constructed identifier for ASN.1 value: not primitive."))]
