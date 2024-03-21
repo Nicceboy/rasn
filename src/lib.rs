@@ -3,6 +3,7 @@
 
 extern crate alloc;
 
+#[macro_export]
 #[cfg(test)]
 macro_rules! round_trip {
     ($codec:ident, $typ:ty, $value:expr, $expected:expr) => {{
