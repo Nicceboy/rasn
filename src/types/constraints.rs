@@ -90,14 +90,14 @@ impl Constraint {
         }
     }
 
-    pub fn as_permitted_alphabet(&self) -> Option<&Extensible<PermittedAlphabet>> {
+    pub const fn as_permitted_alphabet(&self) -> Option<&Extensible<PermittedAlphabet>> {
         match self {
             Self::PermittedAlphabet(alphabet) => Some(alphabet),
             _ => None,
         }
     }
 
-    pub fn to_size(&self) -> Option<&Extensible<Size>> {
+    pub const fn to_size(&self) -> Option<&Extensible<Size>> {
         match self {
             Self::Size(size) => Some(size),
             _ => None,
@@ -274,12 +274,12 @@ impl Size {
 
     #[must_use]
     /// Returns whether the size is fixed.
-    pub fn is_fixed(&self) -> bool {
+    pub const fn is_fixed(&self) -> bool {
         matches!(self.0, Bounded::Single(_))
     }
     /// Returns whether the size has a varying range.
     #[must_use]
-    pub fn is_range(&self) -> bool {
+    pub const fn is_range(&self) -> bool {
         matches!(self.0, Bounded::Range { .. })
     }
 }
@@ -306,7 +306,7 @@ impl PermittedAlphabet {
         Self(range)
     }
 
-    pub fn as_inner(&self) -> &'static [u32] {
+    pub const fn as_inner(&self) -> &'static [u32] {
         self.0
     }
 }
