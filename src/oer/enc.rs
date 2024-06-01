@@ -72,16 +72,16 @@ impl EncodingRules {
         matches!(self, Self::Oer)
     }
 }
-impl Default for Encoder {
-    fn default() -> Self {
-        Self::new(EncoderOptions::coer())
-    }
-}
+// impl Default for Encoder<'> {
+//     fn default() -> Self {
+//         Self::new(EncoderOptions::coer())
+//     }
+// }
 /// COER encoder. A subset of OER to provide canonical and unique encoding.  
 #[derive(Debug)]
-pub struct Encoder {
+pub struct Encoder<'output> {
     options: EncoderOptions,
-    output: Vec<u8>,
+    output: &'output mut Vec<u8>,
     set_output: alloc::collections::BTreeMap<Tag, Vec<u8>>,
     field_bitfield: alloc::collections::BTreeMap<Tag, (FieldPresence, bool)>,
     extension_fields: Vec<Vec<u8>>,
@@ -104,13 +104,14 @@ pub struct Encoder {
 
 // Tags are encoded only as part of the encoding of a choice type, where the tag indicates
 // which alternative of the choice type is the chosen alternative (see 20.1).
-impl Encoder {
+impl<'output> Encoder<'output> {
     // pub fn new(options: EncoderOptions) -> Self {
     #[must_use]
-    pub fn new(options: EncoderOptions) -> Self {
+    pub fn new(options: EncoderOptions, output: &'output mut Vec<u8>) -> Self {
         Self {
             options,
-            output: Vec::with_capacity(PrimitiveInteger::BYTE_WIDTH * 2),
+            // output: Vec::with_capacity(PrimitiveInteger::BYTE_WIDTH * 2),
+            output,
             set_output: <_>::default(),
             field_bitfield: <_>::default(),
             extension_fields: <_>::default(),
@@ -134,7 +135,7 @@ impl Encoder {
                     .collect::<Vec<u8>>()
             })
             // .unwrap_or(self.output)
-            .unwrap_or(self.output)
+            .unwrap_or(self.output.to_vec())
     }
     pub fn set_bit(&mut self, tag: Tag, bit: bool) {
         self.field_bitfield.entry(tag).and_modify(|(_, b)| *b = bit);
@@ -447,26 +448,33 @@ impl Encoder {
         }
         output_length
     }
-    fn new_set_encoder<C: Constructed>(&self) -> Self {
-        let mut options = self.options;
-        options.set_encoding = true;
-        let mut encoder = Self::new(options);
+    fn new_set_encoder<C: Constructed>(
+        options: EncoderOptions,
+        output: &'output mut Vec<u8>,
+        length: usize,
+    ) -> Encoder<'output> {
+        // let mut options = self.options;
+        let mut encoder = Self::new(options, output);
         encoder.field_bitfield = C::FIELDS
             .canonised()
             .iter()
             .map(|field| (field.tag_tree.smallest_tag(), (field.presence, false)))
             .collect();
-        encoder.parent_output_length = Some(self.output_length());
+        encoder.parent_output_length = Some(length);
         encoder
     }
 
-    fn new_sequence_encoder<C: Constructed>(&self) -> Self {
-        let mut encoder = Self::new(self.options.without_set_encoding());
+    fn new_sequence_encoder<C: Constructed>(
+        options: EncoderOptions,
+        output: &'output mut Vec<u8>,
+        length: usize,
+    ) -> Encoder<'output> {
+        let mut encoder = Self::new(options, output);
+        encoder.parent_output_length = Some(length);
         encoder.field_bitfield = C::FIELDS
             .iter()
             .map(|field| (field.tag_tree.smallest_tag(), (field.presence, false)))
             .collect();
-        encoder.parent_output_length = Some(self.output_length());
         encoder
     }
     fn encoded_extension_addition(extension_fields: &[Vec<u8>]) -> bool {
@@ -547,9 +555,12 @@ impl Encoder {
         self.extend(tag)?;
         Ok(())
     }
+    // fn ext_fn_encode() -> Resut<> {
+    //
+    // }
 }
 
-impl crate::Encoder for Encoder {
+impl<'output> crate::Encoder for Encoder<'output> {
     type Ok = ();
     type Error = EncodeError;
 
@@ -845,12 +856,16 @@ impl crate::Encoder for Encoder {
 
     fn encode_sequence<C, F>(&mut self, tag: Tag, encoder_scope: F) -> Result<Self::Ok, Self::Error>
     where
-        C: Constructed,
-        F: FnOnce(&mut Self) -> Result<(), Self::Error>,
+        C: for<'b> Constructed,
+        F: FnOnce(&mut Encoder<'output>) -> Result<(), Self::Error>,
     {
-        let mut encoder = self.new_sequence_encoder::<C>();
+        let options = self.options.without_set_encoding();
+        let length = self.output_length();
+        let mut encoder = Encoder::new_sequence_encoder::<C>(options, &mut self.output, length);
         encoder_scope(&mut encoder)?;
-        self.encode_constructed::<C>(tag, encoder)
+        dbg!(encoder.output);
+        Ok(())
+        // self.encode_constructed::<C>(tag, encoder)
     }
 
     fn encode_sequence_of<E: Encode>(
@@ -876,7 +891,10 @@ impl crate::Encoder for Encoder {
         C: Constructed,
         F: FnOnce(&mut Self) -> Result<(), Self::Error>,
     {
-        let mut set = self.new_set_encoder::<C>();
+        let mut options = self.options;
+        options.set_encoding = true;
+        let length = self.output_length();
+        let mut set = Self::new_set_encoder::<C>(options, self.output, length);
         encoder_scope(&mut set)?;
         self.encode_constructed::<C>(tag, set)
     }
@@ -921,18 +939,24 @@ impl crate::Encoder for Encoder {
         _tag: Tag,
         encode_fn: impl FnOnce(&mut Self) -> Result<Tag, Self::Error>,
     ) -> Result<Self::Ok, Self::Error> {
-        let mut choice_encoder = Self::new(self.options.without_set_encoding());
-        let tag = encode_fn(&mut choice_encoder)?;
+        let mut buffer: Vec<u8>;
+        let tag: Tag;
+        {
+            let mut choice_encoder =
+                Encoder::new(self.options.without_set_encoding(), &mut self.output);
+            tag = encode_fn(&mut choice_encoder)?;
+            buffer = choice_encoder.output();
+        }
         let is_root_extension = crate::TagTree::tag_contains(&tag, E::VARIANTS);
         let tag_bytes: Vec<u8> = Self::encode_tag(tag);
 
         // let mut buffer = Vec::new();
         self.output.extend(tag_bytes);
         if is_root_extension {
-            self.output.append(&mut choice_encoder.output);
+            self.output.append(&mut buffer);
         } else {
-            self.encode_length(choice_encoder.output.len())?;
-            self.output.append(&mut choice_encoder.output);
+            self.encode_length(buffer.len())?;
+            self.output.append(&mut buffer);
         }
         self.extend(tag)?;
         Ok(())
@@ -943,7 +967,7 @@ impl crate::Encoder for Encoder {
         constraints: Constraints,
         value: E,
     ) -> Result<Self::Ok, Self::Error> {
-        let mut encoder = Self::new(self.options.without_set_encoding());
+        let mut encoder = Self::new(self.options.without_set_encoding(), self.output);
         encoder.field_bitfield = <_>::from([(tag, (FieldPresence::Optional, false))]);
         E::encode_with_tag_and_constraints(&value, &mut encoder, tag, constraints)?;
 
