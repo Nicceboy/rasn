@@ -235,7 +235,7 @@ impl<'output> Encoder<'output> {
     /// `Length` of the data should be provided as full bytes.
     ///
     /// COER tries to use the shortest possible encoding and avoids leading zeros.
-    fn encode_length(&mut self, buffer: &mut Vec<u8>, length: usize) -> Result<(), EncodeError> {
+    fn encode_length(&mut self, length: usize) -> Result<(), EncodeError> {
         let (bytes, needed) =
             (length as PrimitiveInteger).needed_as_be_bytes::<PRIMITIVE_BYTE_WIDTH>(false);
 
@@ -271,8 +271,8 @@ impl<'output> Encoder<'output> {
         // let mut buffer = Vec::with_capacity(value_to_enc.byte_length() + 1);
         if let Integer::Primitive(value) = value_to_enc {
             let (slice, needed) = value.needed_as_be_bytes::<PRIMITIVE_BYTE_WIDTH>(true);
-            self.encode_length(&mut buffer, needed)?;
-            buffer.extend_from_slice(&slice[..needed]);
+            self.encode_length(needed)?;
+            self.output.extend(&slice[..needed]);
         } else {
             let bytes = crate::bits::integer_to_bytes(value_to_enc, signed).ok_or_else(|| {
                 EncodeError::integer_type_conversion_failed(
@@ -348,7 +348,6 @@ impl<'output> Encoder<'output> {
         if octets > 8 {
             return Err(CoerEncodeErrorKind::InvalidConstrainedIntegerOctetSize.into());
         }
-        let mut buffer: Vec<u8> = Vec::with_capacity(octets);
         let fixed_size_bytes: [u8; PRIMITIVE_BYTE_WIDTH];
         let len: usize;
         let bytes = if signed {
@@ -487,7 +486,7 @@ impl<'output> Encoder<'output> {
     ) -> Result<(), EncodeError> {
         self.set_bit(tag, true);
         // let mut buffer = Vec::with_capacity(200);
-        let mut preamble = BitString::with_capacity(PrimitiveInteger::BYTE_WIDTH);
+        let mut preamble = BitString::with_capacity(PRIMITIVE_BYTE_WIDTH);
         // ### PREAMBLE ###
         // Section 16.2.2
         let extensions_defined = C::EXTENDED_FIELDS.is_some();
@@ -596,8 +595,7 @@ impl<'output> crate::Encoder for Encoder<'output> {
         // Rasn does not currently support NamedBitList
         self.set_bit(tag, true);
         // let mut buffer: Vec<u8> = Vec::with_capacity(2);
-        let mut bit_string_encoding =
-            BitVec::<u8, Msb0>::with_capacity(PrimitiveInteger::BYTE_WIDTH);
+        let mut bit_string_encoding = BitVec::<u8, Msb0>::with_capacity(PRIMITIVE_BYTE_WIDTH);
 
         if let Some(size) = constraints.size() {
             // Constraints apply only if the lower and upper bounds
@@ -967,7 +965,7 @@ impl<'output> crate::Encoder for Encoder<'output> {
         constraints: Constraints,
         value: E,
     ) -> Result<Self::Ok, Self::Error> {
-        let mut encoder = Self::new(self.options.without_set_encoding(), self.output);
+        let mut encoder = Encoder::new(self.options.without_set_encoding(), self.output);
         encoder.field_bitfield = <_>::from([(tag, (FieldPresence::Optional, false))]);
         E::encode_with_tag_and_constraints(&value, &mut encoder, tag, constraints)?;
 
