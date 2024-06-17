@@ -5,17 +5,24 @@
 // encoding as the accepted input since `data` could contain trailing
 // bytes not used by the decoder.
 #![allow(clippy::missing_docs_in_private_items)]
-mod fuzz_types;
+pub mod fuzz_types;
 
 // use fuzz_types::*;
-use crate::fuzz_types::{Sequence1, SingleSizeConstrainedBitString};
+use fuzz_types::{Choice1, Sequence1, SingleSizeConstrainedBitString};
 use rasn::prelude::*;
+use rasn_smi::v2::ObjectSyntax;
 
 macro_rules! fuzz_any_type_fn {
     ($fn_name:ident, $codec:ident) => {
         pub fn $fn_name<T: Encode + Decode + std::fmt::Debug + PartialEq>(data: &[u8]) {
+            dbg!(data);
             if let Ok(value) = rasn::$codec::decode::<T>(data) {
-                assert_eq!(data, &rasn::$codec::encode(&value).unwrap());
+                dbg!(&value);
+                let encoded = rasn::$codec::encode(&value).unwrap();
+                dbg!(&encoded);
+                let decoded = rasn::$codec::decode::<T>(&encoded).unwrap();
+                dbg!(&decoded);
+                assert_eq!(value, decoded);
             }
         }
     };
@@ -44,13 +51,14 @@ fuzz_any_type_fn!(fuzz_der, der);
 pub fn fuzz_codec(data: &[u8]) {
     // fuzz_coer::<Integers>(data);
     // fuzz_coer::<Enum1>(data);
+    fuzz_coer::<ObjectIdentifier>(data);
     // fuzz_coer::<Choice1>(data);
     // fuzz_coer::<IntegerA>(data);
     // fuzz_coer::<IntegerB>(data);
     // fuzz_coer::<IntegerC>(data);
     // fuzz_oer::<ConstrainedBitString>(data);
     // fuzz_oer::<Sequence1>(data);
-    fuzz_oer::<SingleSizeConstrainedBitString>(data);
+    // fuzz_oer::<SingleSizeConstrainedBitString>(data);
 }
 // pub fn fuzz_pkix(data: &[u8]) {
 //     fuzz_many_types!(der, data, rasn_pkix::Certificate);

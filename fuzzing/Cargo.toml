@@ -17,3 +17,4 @@ afl = "0.15.5"
 clap = { version = "4.5.4", features = ["derive"] }
 anyhow = "1.0.75"
 pretty_assertions = "1.4.0"
+rasn-smi = "0.15.3"

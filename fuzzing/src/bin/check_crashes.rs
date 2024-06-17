@@ -1,6 +1,9 @@
 use anyhow::{Context, Result};
 use clap::{ArgGroup, Parser};
+use fuzz::fuzz_types::SingleSizeConstrainedBitString;
 use rasn::prelude::*;
+
+use rasn_smi::v2::ObjectSyntax;
 
 /// Run crash cases of fuzzing from a directory or a single file.
 #[derive(Parser, Debug)]
@@ -20,7 +23,9 @@ struct Cli {
 fn main() -> Result<()> {
     let args = Cli::parse();
     let fuzz_fn = match &args.codec {
-        codec if codec == "oer" => fuzz::fuzz_oer::<Integer>,
+        // codec if codec == "oer" => fuzz::fuzz_oer::<Integer>,
+        // codec if codec == "oer" => fuzz::fuzz_oer::<SingleSizeConstrainedBitString>,
+        codec if codec == "oer" => fuzz::fuzz_coer::<ObjectIdentifier>,
         // codec if codec == "der" => fuzz::fuzz_pkix,
         _ => fuzz::fuzz,
     };

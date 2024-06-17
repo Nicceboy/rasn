@@ -111,6 +111,13 @@ pub enum Choice1 {
 }
 
 #[derive(AsnType, Decode, Encode, Clone, Debug, PartialEq, Eq)]
+#[rasn(choice, automatic_tags)]
+pub enum ChoiceInChoice {
+    Value1(Choice1),
+    Value2(Choice1),
+}
+
+#[derive(AsnType, Decode, Encode, Clone, Debug, PartialEq, Eq)]
 #[rasn(automatic_tags)]
 pub struct Sequence1 {
     pub int1: Integers,
@@ -121,7 +128,7 @@ pub struct Sequence1 {
 
 #[allow(unused_macros)]
 macro_rules! populate {
-    ($codec:ident, $asn_typ:expr, $typ:ty, $value:expr) => {{
+    ($codec:ident, $asn_typ:expr, $typ:ty, $value:expr, $case:expr) => {{
         let value: $typ = $value;
         let actual_encoding = rasn::$codec::encode(&value).unwrap();
         let decoded_value: $typ = rasn::$codec::decode(&actual_encoding).unwrap();
@@ -131,11 +138,13 @@ macro_rules! populate {
             .ok()
             .map_or(0, |v| v.parse().unwrap_or(0));
         if generate_seeds > 0 {
+            // Format is in/{codec}/{asn_typ}/{subtype}/{case}.bin
             let fp = format!(
-                "in/{}/{}/{}.bin",
+                "in/{}/{}/{}/data{}.bin",
                 stringify!($codec),
                 $asn_typ,
-                stringify!($typ)
+                stringify!($typ),
+                $case
             );
             let fp = std::path::Path::new(&fp);
             if let Some(parent) = fp.parent() {
@@ -176,8 +185,9 @@ impl std::fmt::Display for ASN1Types {
 
 mod tests {
     use super::{
-        ASN1Types, BitString, Choice1, ConstrainedInteger, Enum1, Fuel, Integer, Integers,
-        OctetString, Rocket, Sequence1, SingleSizeConstrainedBitString, Speed, Strings, Utf8String,
+        ASN1Types, BitString, Choice1, ChoiceInChoice, ConstrainedInteger, Enum1, Fuel, Integer,
+        Integers, OctetString, Rocket, Sequence1, SingleSizeConstrainedBitString, Speed, Strings,
+        Utf8String,
     };
     use std::iter::FromIterator;
     #[test]
@@ -208,7 +218,7 @@ mod tests {
             enum1: Enum1::Value1,
             choice1: Choice1::Value1(1.into()),
         };
-        populate!(coer, ASN1Types::Sequence, Sequence1, data);
+        populate!(coer, ASN1Types::Sequence, Sequence1, data, 1);
     }
     #[test]
     fn test_bitstring() {
@@ -217,14 +227,38 @@ mod tests {
         ]
         .iter()
         .collect::<BitString>();
-        populate!(coer, ASN1Types::BitString, BitString, data1.clone());
+        populate!(coer, ASN1Types::BitString, BitString, data1.clone(), 1);
         let data2: SingleSizeConstrainedBitString = SingleSizeConstrainedBitString(data1);
         populate!(
             coer,
             ASN1Types::BitString,
             SingleSizeConstrainedBitString,
-            data2
+            data2,
+            1
         );
+    }
+    #[test]
+    fn test_choice() {
+        let data1: Choice1 = Choice1::Value1(1.into());
+        populate!(coer, ASN1Types::Choice, Choice1, data1, 1);
+        let data2: Choice1 = Choice1::Value2(2);
+        populate!(coer, ASN1Types::Choice, Choice1, data2, 2);
+        let data3: Choice1 = Choice1::Value3("str".to_string());
+        populate!(coer, ASN1Types::Choice, Choice1, data3, 3);
+        let data4: Choice1 = Choice1::Value4(SingleSizeConstrainedBitString(
+            [
+                false, false, true, false, true, true, false, true, true, false, true, true,
+            ]
+            .iter()
+            .collect::<BitString>(),
+        ));
+        populate!(coer, ASN1Types::Choice, Choice1, data4, 4);
+    }
+    #[test]
+    fn test_choice_in_choice() {
+        let data1: Choice1 = Choice1::Value3("dang".to_string());
+        let data2: ChoiceInChoice = ChoiceInChoice::Value1(data1);
+        populate!(coer, ASN1Types::Choice, ChoiceInChoice, data2, 1);
     }
 }
 
