@@ -1,20 +1,18 @@
 [package]
 name = "fuzz"
-version = "0.0.0"
+version = "0.0.1"
 authors = ["Erin Power <xampprocky@gmail.com>"]
 edition = "2018"
 description = "Something someday."
 license = "MIT/Apache-2.0"
 publish = false
 
-[workspace]
 
 [dependencies]
-rasn = { path = "..", default-features = false, features = ["macros"]}
+rasn = { path = "..", default-features = false, features = ["macros"] }
 #rasn-snmp = { path = "../standards/snmp" }
-#rasn-pkix = { path = "../standards/pkix" }
+rasn-smi = { path = "../standards/smi" }
 afl = "0.15.5"
 clap = { version = "4.5.4", features = ["derive"] }
 anyhow = "1.0.75"
 pretty_assertions = "1.4.0"
-rasn-smi = "0.15.3"

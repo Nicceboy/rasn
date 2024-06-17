@@ -166,6 +166,7 @@ enum ASN1Types {
     Sequence,
     String,
     OctetString,
+    ObjectIdentifier,
 }
 // impl Display for ASN1Types, lowercase
 impl std::fmt::Display for ASN1Types {
@@ -178,18 +179,20 @@ impl std::fmt::Display for ASN1Types {
             ASN1Types::Enum => "enum",
             ASN1Types::Choice => "choice",
             ASN1Types::OctetString => "octetstring",
+            ASN1Types::ObjectIdentifier => "objectidentifier",
         };
         write!(f, "{name}")
     }
 }
 
 mod tests {
+    use rasn::types::{ObjectIdentifier, Oid};
+
     use super::{
         ASN1Types, BitString, Choice1, ChoiceInChoice, ConstrainedInteger, Enum1, Fuel, Integer,
         Integers, OctetString, Rocket, Sequence1, SingleSizeConstrainedBitString, Speed, Strings,
         Utf8String,
     };
-    use std::iter::FromIterator;
     #[test]
     fn test_coer() {
         let _rocket: Rocket = Rocket {
@@ -259,6 +262,18 @@ mod tests {
         let data1: Choice1 = Choice1::Value3("dang".to_string());
         let data2: ChoiceInChoice = ChoiceInChoice::Value1(data1);
         populate!(coer, ASN1Types::Choice, ChoiceInChoice, data2, 1);
+    }
+    #[test]
+    fn test_object_identifier() {
+        // 1.2.34567.88
+        let data = Oid::const_new(&[1, 2, 34567, 88]);
+        populate!(
+            coer,
+            ASN1Types::ObjectIdentifier,
+            ObjectIdentifier,
+            data.into(),
+            1
+        );
     }
 }
 

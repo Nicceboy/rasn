@@ -17,12 +17,16 @@ macro_rules! fuzz_any_type_fn {
         pub fn $fn_name<T: Encode + Decode + std::fmt::Debug + PartialEq>(data: &[u8]) {
             dbg!(data);
             if let Ok(value) = rasn::$codec::decode::<T>(data) {
+                dbg!("Decoded");
                 dbg!(&value);
                 let encoded = rasn::$codec::encode(&value).unwrap();
+                dbg!("Encoded");
                 dbg!(&encoded);
                 let decoded = rasn::$codec::decode::<T>(&encoded).unwrap();
                 dbg!(&decoded);
                 assert_eq!(value, decoded);
+            } else {
+                dbg!("Failed to decode");
             }
         }
     };
@@ -51,7 +55,8 @@ fuzz_any_type_fn!(fuzz_der, der);
 pub fn fuzz_codec(data: &[u8]) {
     // fuzz_coer::<Integers>(data);
     // fuzz_coer::<Enum1>(data);
-    fuzz_coer::<ObjectIdentifier>(data);
+    // fuzz_coer::<ObjectSyntax>(data);
+    fuzz_ber::<Ia5String>(data);
     // fuzz_coer::<Choice1>(data);
     // fuzz_coer::<IntegerA>(data);
     // fuzz_coer::<IntegerB>(data);

@@ -118,6 +118,7 @@ pub mod cer;
 pub mod coer;
 pub mod der;
 pub mod error;
+#[cfg(feature = "jer")]
 pub mod jer;
 mod num;
 pub mod oer;
@@ -155,11 +156,11 @@ mod tests {
                         &match crate::$codec::decode::<T>(
                             &match crate::$codec::encode(value).map_err(|error| error.to_string()) {
                                 Ok(value) => value,
-                                Err(error) => panic!("{}", error),
+                                Err(error) => panic!("error encoding: {}", error),
                             }
                         ) {
                             Ok(value) => value,
-                            Err(error) => panic!("{}", error),
+                            Err(error) => panic!("error decoding: {}", error),
                         }
                     );
                 )+
@@ -185,10 +186,10 @@ mod tests {
             $(
                 #[test]
                 fn $integer() {
-                    let min = <$integer>::min_value();
-                    let max = <$integer>::max_value();
-                    let half_max = <$integer>::max_value() / 2;
-                    let half_min = <$integer>::min_value() / 2;
+                    let min = <$integer>::MIN;
+                    let max = <$integer>::MAX;
+                    let half_max = <$integer>::MAX / 2;
+                    let half_min = <$integer>::MIN / 2;
 
                     round_trip(&min);
                     round_trip(&half_min);
@@ -252,14 +253,7 @@ mod tests {
                 tag: Tag,
                 constraints: Constraints,
             ) -> Result<Self, D::Error> {
-                use crate::de::Error;
-                use core::convert::TryFrom;
-
-                let integer = decoder.decode_integer(tag, constraints)?;
-
-                Ok(Self(
-                    <_>::try_from(integer).map_err(|e| D::Error::custom(e, decoder.codec()))?,
-                ))
+                Ok(Self(decoder.decode_integer::<i32>(tag, constraints)?))
             }
         }
 
