@@ -199,7 +199,12 @@ impl std::fmt::Display for ASN1Types {
 }
 
 mod tests {
-    use rasn::types::{ObjectIdentifier, Oid};
+    use rasn::{
+        examples::personnel::{
+            ExtensiblePersonnelRecord, PersonnelRecord, PersonnelRecordWithConstraints,
+        },
+        types::{ObjectIdentifier, Oid},
+    };
 
     use super::*;
     #[test]
@@ -295,10 +300,30 @@ mod tests {
     }
     #[test]
     fn test_personnel_record() {
-        use rasn::examples::personnel::PersonnelRecord;
-
         let data = PersonnelRecord::default();
         populate!(coer, ASN1Types::Sequence, PersonnelRecord, data, 1);
+    }
+    #[test]
+    fn test_personnel_record_with_constraints() {
+        let data = PersonnelRecordWithConstraints::default();
+        populate!(
+            coer,
+            ASN1Types::Sequence,
+            PersonnelRecordWithConstraints,
+            data,
+            1
+        );
+    }
+    #[test]
+    fn test_personnel_record_extensible() {
+        let data = ExtensiblePersonnelRecord::default();
+        populate!(
+            coer,
+            ASN1Types::Sequence,
+            ExtensiblePersonnelRecord,
+            data,
+            1
+        );
     }
 }
 

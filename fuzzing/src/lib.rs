@@ -66,7 +66,8 @@ pub fn fuzz_codec(data: &[u8]) {
     // fuzz_coer::<Enum1>(data);
     // fuzz_coer::<ObjectSyntax>(data);
     // fuzz_coer::<Ia5String>(data);
-    fuzz_oer::<rasn::examples::personnel::PersonnelRecord>(data);
+    // fuzz_oer::<rasn::examples::personnel::PersonnelRecord>(data);
+    fuzz_oer::<rasn::examples::personnel::PersonnelRecordWithConstraints>(data);
     // fuzz_coer::<Choice1>(data);
     // fuzz_coer::<IntegerA>(data);
     // fuzz_coer::<IntegerB>(data);
