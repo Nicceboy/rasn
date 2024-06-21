@@ -8,39 +8,42 @@
 pub mod fuzz_types;
 
 // use fuzz_types::*;
-use fuzz_types::{Choice1, Sequence1, SingleSizeConstrainedBitString};
+use fuzz_types::{Choice1, Sequence1, SequenceOptionals, SingleSizeConstrainedBitString};
 use rasn::prelude::*;
-use rasn_smi::v2::ObjectSyntax;
+// use rasn_smi::v2::ObjectSyntax;
+//
 
 macro_rules! fuzz_any_type_fn {
     ($fn_name:ident, $codec:ident) => {
         pub fn $fn_name<T: Encode + Decode + std::fmt::Debug + PartialEq>(data: &[u8]) {
-            dbg!(data);
-            if let Ok(value) = rasn::$codec::decode::<T>(data) {
-                dbg!("Decoded");
-                dbg!(&value);
-                let encoded = rasn::$codec::encode(&value).unwrap();
-                dbg!("Encoded");
-                dbg!(&encoded);
-                let decoded = rasn::$codec::decode::<T>(&encoded).unwrap();
-                dbg!(&decoded);
-                assert_eq!(value, decoded);
-            } else {
-                dbg!("Failed to decode");
+            dbg!(&data);
+            data.into_iter().for_each(|v| {
+                // As binary 1010
+                dbg!(std::format!("{:b}", v));
+            });
+            match rasn::$codec::decode::<T>(data) {
+                Ok(value) => {
+                    dbg!("Decoded");
+                    dbg!(&value);
+                    let encoded = rasn::$codec::encode(&value).unwrap();
+                    dbg!("encoded");
+                    data.into_iter().for_each(|v| {
+                        // as binary 1010
+                        dbg!(std::format!("{:b}", v));
+                    });
+                    dbg!(&encoded);
+                    let decoded = rasn::$codec::decode::<T>(&encoded).unwrap();
+                    dbg!(&decoded);
+                    assert_eq!(value, decoded);
+                }
+                Err(e) => {
+                    dbg!(e);
+                }
             }
         }
     };
 }
 
-// macro_rules! fuzz_many_types {
-//     ($codec:ident, $data:expr, $($typ:ty),+ $(,)?) => {
-//         $(
-//             if let Ok(value) = rasn::$codec::decode::<$typ>($data) {
-//                 assert_eq!(value, rasn::$codec::decode::<$typ>(&rasn::$codec::encode(&value).unwrap()).unwrap());
-//             }
-//         )+
-//     }
-// }
 // Creates a codec-specific fuzz function which can fuzz any ASN.1 type
 // that implements `Encode`, `Decode`, `Debug` and `PartialEq` traits.
 // Use e.g. fuzz_oer::<Integer>(data);
@@ -56,7 +59,8 @@ pub fn fuzz_codec(data: &[u8]) {
     // fuzz_coer::<Integers>(data);
     // fuzz_coer::<Enum1>(data);
     // fuzz_coer::<ObjectSyntax>(data);
-    fuzz_ber::<Ia5String>(data);
+    // fuzz_coer::<Ia5String>(data);
+    fuzz_coer::<SequenceOptionals>(data);
     // fuzz_coer::<Choice1>(data);
     // fuzz_coer::<IntegerA>(data);
     // fuzz_coer::<IntegerB>(data);

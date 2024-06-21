@@ -125,6 +125,15 @@ pub struct Sequence1 {
     pub enum1: Enum1,
     pub choice1: Choice1,
 }
+#[derive(AsnType, Decode, Encode, Clone, Debug, PartialEq, Eq)]
+pub struct SequenceOptionals {
+    #[rasn(tag(explicit(0)))]
+    pub is: Integer,
+    #[rasn(tag(explicit(1)))]
+    pub late: Option<OctetString>,
+    #[rasn(tag(explicit(2)))]
+    pub today: Option<Integer>,
+}
 
 #[allow(unused_macros)]
 macro_rules! populate {
@@ -161,10 +170,12 @@ macro_rules! populate {
 enum ASN1Types {
     Integer,
     BitString,
+    Ia5String,
+    VisibleString,
     Choice,
     Enum,
     Sequence,
-    String,
+    Utf8String,
     OctetString,
     ObjectIdentifier,
 }
@@ -174,7 +185,9 @@ impl std::fmt::Display for ASN1Types {
         let name = match self {
             ASN1Types::Integer => "integer",
             ASN1Types::BitString => "bitstring",
-            ASN1Types::String => "string",
+            ASN1Types::Ia5String => "ia5string",
+            ASN1Types::VisibleString => "visiblestring",
+            ASN1Types::Utf8String => "utf8string",
             ASN1Types::Sequence => "sequence",
             ASN1Types::Enum => "enum",
             ASN1Types::Choice => "choice",
@@ -188,11 +201,7 @@ impl std::fmt::Display for ASN1Types {
 mod tests {
     use rasn::types::{ObjectIdentifier, Oid};
 
-    use super::{
-        ASN1Types, BitString, Choice1, ChoiceInChoice, ConstrainedInteger, Enum1, Fuel, Integer,
-        Integers, OctetString, Rocket, Sequence1, SingleSizeConstrainedBitString, Speed, Strings,
-        Utf8String,
-    };
+    use super::*;
     #[test]
     fn test_coer() {
         let _rocket: Rocket = Rocket {
@@ -274,6 +283,15 @@ mod tests {
             data.into(),
             1
         );
+    }
+    #[test]
+    fn test_sequence_optional() {
+        let data = SequenceOptionals {
+            is: 1.into(),
+            late: Some(OctetString::from_static(&[0x01, 0x02, 0x03, 0x04])),
+            today: Some(1.into()),
+        };
+        populate!(coer, ASN1Types::Sequence, SequenceOptionals, data, 1);
     }
 }
 

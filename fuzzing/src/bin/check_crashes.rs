@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::{ArgGroup, Parser};
-use fuzz::fuzz_types::SingleSizeConstrainedBitString;
+use fuzz::fuzz_types::{SequenceOptionals, SingleSizeConstrainedBitString};
 use rasn::prelude::*;
 
 use rasn_smi::v2::ObjectSyntax;
@@ -26,7 +26,7 @@ fn main() -> Result<()> {
         // codec if codec == "oer" => fuzz::fuzz_oer::<Integer>,
         // codec if codec == "oer" => fuzz::fuzz_oer::<SingleSizeConstrainedBitString>,
         // codec if codec == "oer" => fuzz::fuzz_coer::<ObjectSyntax>,
-        codec if codec == "ber" => fuzz::fuzz_ber::<Ia5String>,
+        codec if codec == "oer" => fuzz::fuzz_coer::<SequenceOptionals>,
         // codec if codec == "der" => fuzz::fuzz_pkix,
         _ => fuzz::fuzz,
     };
