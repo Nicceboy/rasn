@@ -9,35 +9,41 @@ pub mod fuzz_types;
 
 // use fuzz_types::*;
 use fuzz_types::{Choice1, Sequence1, SequenceOptionals, SingleSizeConstrainedBitString};
+use log::{debug, info};
 use rasn::prelude::*;
 // use rasn_smi::v2::ObjectSyntax;
 //
+#[cfg(debug_assertions)]
+fn debug_bytes(data: &[u8], codec: &str) {
+    debug!("{codec} encoded data in decimal array: {:?}", data);
+    let in_binary: Vec<String> = data.iter().map(|v| format!("0b{:08b}", v)).collect();
+    debug!("{codec} encoded data in binary array: {:?}", in_binary);
+}
+#[cfg(debug_assertions)]
+fn debug_object<T: std::fmt::Debug>(data: T, codec: &str) {
+    debug!(data:?; "{codec} decoded data");
+}
 
 macro_rules! fuzz_any_type_fn {
     ($fn_name:ident, $codec:ident) => {
         pub fn $fn_name<T: Encode + Decode + std::fmt::Debug + PartialEq>(data: &[u8]) {
-            dbg!(&data);
-            data.into_iter().for_each(|v| {
-                // As binary 1010
-                dbg!(std::format!("{:b}", v));
-            });
+            #[cfg(debug_assertions)]
+            debug_bytes(data, stringify!($codec));
             match rasn::$codec::decode::<T>(data) {
                 Ok(value) => {
-                    dbg!("Decoded");
-                    dbg!(&value);
+                    #[cfg(debug_assertions)]
+                    debug_object(&value, stringify!($codec));
                     let encoded = rasn::$codec::encode(&value).unwrap();
-                    dbg!("encoded");
-                    data.into_iter().for_each(|v| {
-                        // as binary 1010
-                        dbg!(std::format!("{:b}", v));
-                    });
-                    dbg!(&encoded);
+                    #[cfg(debug_assertions)]
+                    debug_bytes(&encoded, stringify!($codec));
                     let decoded = rasn::$codec::decode::<T>(&encoded).unwrap();
-                    dbg!(&decoded);
+                    #[cfg(debug_assertions)]
+                    debug_object(&decoded, stringify!($codec));
                     assert_eq!(value, decoded);
                 }
                 Err(e) => {
-                    dbg!(e);
+                    #[cfg(debug_assertions)]
+                    debug_object(&e, stringify!($codec));
                 }
             }
         }
@@ -60,7 +66,7 @@ pub fn fuzz_codec(data: &[u8]) {
     // fuzz_coer::<Enum1>(data);
     // fuzz_coer::<ObjectSyntax>(data);
     // fuzz_coer::<Ia5String>(data);
-    fuzz_coer::<SequenceOptionals>(data);
+    fuzz_oer::<SequenceOptionals>(data);
     // fuzz_coer::<Choice1>(data);
     // fuzz_coer::<IntegerA>(data);
     // fuzz_coer::<IntegerB>(data);
