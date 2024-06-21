@@ -118,6 +118,7 @@ pub mod cer;
 pub mod coer;
 pub mod der;
 pub mod error;
+pub mod examples;
 #[cfg(feature = "jer")]
 pub mod jer;
 mod num;

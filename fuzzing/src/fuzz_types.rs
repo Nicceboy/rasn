@@ -293,6 +293,13 @@ mod tests {
         };
         populate!(coer, ASN1Types::Sequence, SequenceOptionals, data, 1);
     }
+    #[test]
+    fn test_personnel_record() {
+        use rasn::examples::personnel::PersonnelRecord;
+
+        let data = PersonnelRecord::default();
+        populate!(coer, ASN1Types::Sequence, PersonnelRecord, data, 1);
+    }
 }
 
 // temci short shell --sudo

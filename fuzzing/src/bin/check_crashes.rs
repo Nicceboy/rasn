@@ -39,13 +39,13 @@ struct Cli {
 
 fn main() -> Result<()> {
     log::set_logger(&LOGGER).unwrap();
-    log::set_max_level(LevelFilter::Debug);
+    log::set_max_level(LevelFilter::Info);
     let args = Cli::parse();
     let fuzz_fn = match &args.codec {
         // codec if codec == "oer" => fuzz::fuzz_oer::<Integer>,
         // codec if codec == "oer" => fuzz::fuzz_oer::<SingleSizeConstrainedBitString>,
         // codec if codec == "oer" => fuzz::fuzz_coer::<ObjectSyntax>,
-        codec if codec == "oer" => fuzz::fuzz_oer::<SequenceOptionals>,
+        codec if codec == "oer" => fuzz::fuzz_oer::<rasn::examples::personnel::PersonnelRecord>,
         // codec if codec == "der" => fuzz::fuzz_pkix,
         _ => fuzz::fuzz,
     };
