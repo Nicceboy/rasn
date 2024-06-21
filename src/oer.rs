@@ -89,6 +89,23 @@ mod tests {
         );
     }
     #[test]
+    fn test_sequence_of() {
+        #[derive(AsnType, Decode, Encode, Debug, Clone, PartialEq)]
+        struct TestA {
+            a: TestB,
+        }
+        #[derive(AsnType, Decode, Encode, Debug, Clone, PartialEq)]
+        struct TestB {
+            a: u8,
+            b: Option<u8>,
+            c: SequenceOf<u8>,
+        }
+        let data = [61, 11];
+        decode_error!(oer, TestA, &data);
+        let data: [u8; 108] = [30; 108];
+        decode_error!(oer, TestA, &data);
+    }
+    #[test]
     fn test_enumerated() {
         // short with leading zeros
         #[derive(AsnType, Decode, Encode, Debug, Clone, Copy, PartialEq)]
@@ -137,6 +154,7 @@ mod tests {
         };
         round_trip!(oer, SequenceOptionals, test_seq, &[0x00, 0x01, 0x2A]);
     }
+    #[test]
     fn test_seq_preamble_unused_bits() {
         use crate as rasn;
         #[derive(AsnType, Decode, Encode, Clone, Debug, PartialEq, Eq)]

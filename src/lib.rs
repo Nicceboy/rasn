@@ -49,7 +49,7 @@ macro_rules! decode_error {
                 panic!("Unexpected decoding success!");
             }
             Err(_) => {
-                // Expected a deoding error, so we're good!
+                // Expected a decoding error, so we're good!
             }
         }
     }};
@@ -61,8 +61,8 @@ macro_rules! decode_ok {
             Ok(result) => {
                 pretty_assertions::assert_eq!(result, $expected);
             }
-            Err(_) => {
-                panic!("Unexpected decoding failure!");
+            Err(e) => {
+                panic!("Unexpected decoding failure!: {e}");
             }
         }
     }};
