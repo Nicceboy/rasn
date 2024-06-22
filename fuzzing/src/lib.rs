@@ -8,11 +8,29 @@
 pub mod fuzz_types;
 
 // use fuzz_types::*;
-use fuzz_types::{Choice1, Sequence1, SequenceOptionals, SingleSizeConstrainedBitString};
-use log::{debug, info};
+use fuzz_types::{
+    Choice1, ExtendedOptions, Sequence1, SequenceOptionals, SingleSizeConstrainedBitString,
+};
+use log::{debug, error, info, warn, Level, LevelFilter, Metadata, Record};
 use rasn::prelude::*;
 // use rasn_smi::v2::ObjectSyntax;
 //
+pub static LOGGER: CodecLogger = CodecLogger;
+
+pub struct CodecLogger;
+
+impl log::Log for CodecLogger {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        metadata.level() <= Level::Debug
+    }
+
+    fn log(&self, record: &Record) {
+        if self.enabled(record.metadata()) {
+            println!("{} - {}", record.level(), record.args());
+        }
+    }
+    fn flush(&self) {}
+}
 #[cfg(debug_assertions)]
 fn debug_bytes(data: &[u8], codec: &str) {
     debug!("{codec} encoded data in decimal array: {:?}", data);
@@ -67,7 +85,8 @@ pub fn fuzz_codec(data: &[u8]) {
     // fuzz_coer::<ObjectSyntax>(data);
     // fuzz_coer::<Ia5String>(data);
     // fuzz_oer::<rasn::examples::personnel::PersonnelRecord>(data);
-    fuzz_oer::<rasn::examples::personnel::PersonnelRecordWithConstraints>(data);
+    // fuzz_oer::<rasn::examples::personnel::PersonnelRecordWithConstraints>(data);
+    fuzz_oer::<ExtendedOptions>(data);
     // fuzz_coer::<Choice1>(data);
     // fuzz_coer::<IntegerA>(data);
     // fuzz_coer::<IntegerB>(data);

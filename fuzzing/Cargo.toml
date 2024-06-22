@@ -17,3 +17,14 @@ clap = { version = "4.5.4", features = ["derive"] }
 anyhow = "1.0.75"
 pretty_assertions = "1.4.0"
 log = { version = "0.4.21", features = ["kv"] }
+libfuzzer-sys = "0.4"
+
+[package.metadata]
+cargo-fuzz = true
+
+[[bin]]
+name = "fuzz_target_1"
+path = "src/bin/fuzz_target_1.rs"
+test = false
+doc = false
+bench = false

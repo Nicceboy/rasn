@@ -7,6 +7,8 @@
 //!
 #![allow(clippy::no_effect_underscore_binding)]
 
+use crate::{debug_bytes, debug_object, LOGGER};
+use log::{error, info, warn, Level, LevelFilter, Metadata, Record};
 use rasn::prelude::*;
 
 // On top of unconstrained `Integer`, we also test some value constrained types.
@@ -135,12 +137,40 @@ pub struct SequenceOptionals {
     pub today: Option<Integer>,
 }
 
+#[derive(AsnType, Debug, Clone, Decode, Encode, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[rasn(delegate, size("3"))]
+pub struct HashedId3(pub OctetString);
+
+#[derive(AsnType, Debug, Decode, Encode, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[rasn(delegate, automatic_tags)]
+pub struct Uint16(u16);
+
+#[derive(AsnType, Debug, Decode, Encode, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[rasn(automatic_tags)]
+#[non_exhaustive]
+pub struct MissingCrlIdentifier {
+    pub craca_id: HashedId3,
+    pub crl_series: Uint16,
+}
+#[derive(AsnType, Debug, Decode, Encode, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[rasn(automatic_tags)]
+// #[non_exhaustive]
+pub struct ExtendedOptions {
+    // pub a: HashedId3,
+    pub b: Option<HashedId3>,
+    // pub c: Option<MissingCrlIdentifier>,
+    // #[rasn(extension_addition)]
+    // pub d: Option<SequenceOf<HashedId3>>,
+}
+
 #[allow(unused_macros)]
 macro_rules! populate {
     ($codec:ident, $asn_typ:expr, $typ:ty, $value:expr, $case:expr) => {{
         let value: $typ = $value;
         let actual_encoding = rasn::$codec::encode(&value).unwrap();
+        debug_bytes(&actual_encoding, stringify!($codec));
         let decoded_value: $typ = rasn::$codec::decode(&actual_encoding).unwrap();
+        debug_object(&decoded_value, stringify!($codec));
         pretty_assertions::assert_eq!(value, decoded_value);
         // Generate seeds for fuzzing, based on type
         let generate_seeds: u8 = std::env::var("RASN_FUZZ_SEEDS")
@@ -207,6 +237,7 @@ mod tests {
     };
 
     use super::*;
+
     #[test]
     fn test_coer() {
         let _rocket: Rocket = Rocket {
@@ -297,6 +328,34 @@ mod tests {
             today: Some(1.into()),
         };
         populate!(coer, ASN1Types::Sequence, SequenceOptionals, data, 1);
+    }
+    #[test]
+    fn test_extended_options() {
+        log::set_logger(&LOGGER);
+        log::set_max_level(LevelFilter::Debug);
+        let data = ExtendedOptions {
+            // a: HashedId3(OctetString::from_static(&[0x01, 0x02, 0x03])),
+            b: Some(HashedId3(OctetString::from_static(&[0x06, 0x07, 0x08]))),
+            // c: Some(MissingCrlIdentifier {
+            //     craca_id: HashedId3(OctetString::from_static(&[0x01, 0x02, 0x03])),
+            //     crl_series: Uint16(15),
+            // }),
+            // d: None, // d: Some(SequenceOf::from(vec![
+            //     HashedId3(OctetString::from_static(&[0x01, 0x02, 0x03])),
+            //     HashedId3(OctetString::from_static(&[0x01, 0x02, 0x03])),
+            // ])),
+        };
+        populate!(coer, ASN1Types::Sequence, ExtendedOptions, data, 1);
+        // let data2 = ExtendedOptions {
+        //     a: HashedId3(OctetString::from_static(&[0x11, 0x22, 0x33])),
+        //     b: None,
+        // c: Some(MissingCrlIdentifier {
+        //     craca_id: HashedId3(OctetString::from_static(&[0x11, 0x22, 0x33])),
+        //     crl_series: Uint16(1),
+        // }),
+        // d: None,
+        // };
+        // populate!(coer, ASN1Types::Sequence, ExtendedOptions, data2, 2);
     }
     #[test]
     fn test_personnel_record() {

@@ -1,26 +1,10 @@
 use anyhow::{Context, Result};
 use clap::{ArgGroup, Parser};
-use fuzz::fuzz_types::{SequenceOptionals, SingleSizeConstrainedBitString};
+use fuzz::fuzz_types::{MissingCrlIdentifier, SequenceOptionals, SingleSizeConstrainedBitString};
 use log::{error, info, warn, Level, LevelFilter, Metadata, Record};
 // use rasn::prelude::*;
+use fuzz::LOGGER;
 use rasn_smi::v2::ObjectSyntax;
-
-static LOGGER: CodecLogger = CodecLogger;
-
-struct CodecLogger;
-
-impl log::Log for CodecLogger {
-    fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.level() <= Level::Debug
-    }
-
-    fn log(&self, record: &Record) {
-        if self.enabled(record.metadata()) {
-            println!("{} - {}", record.level(), record.args());
-        }
-    }
-    fn flush(&self) {}
-}
 
 /// Run crash cases of fuzzing from a directory or a single file.
 #[derive(Parser, Debug)]
@@ -45,7 +29,8 @@ fn main() -> Result<()> {
         // codec if codec == "oer" => fuzz::fuzz_oer::<Integer>,
         // codec if codec == "oer" => fuzz::fuzz_oer::<SingleSizeConstrainedBitString>,
         // codec if codec == "oer" => fuzz::fuzz_coer::<ObjectSyntax>,
-        codec if codec == "oer" => fuzz::fuzz_oer::<rasn::examples::personnel::PersonnelRecord>,
+        // codec if codec == "oer" => fuzz::fuzz_oer::<rasn::examples::personnel::PersonnelRecord>,
+        codec if codec == "oer" => fuzz::fuzz_oer::<MissingCrlIdentifier>,
         // codec if codec == "der" => fuzz::fuzz_pkix,
         _ => fuzz::fuzz,
     };
