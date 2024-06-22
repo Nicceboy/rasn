@@ -1210,14 +1210,19 @@ mod tests {
 
         #[derive(AsnType, Debug, Decode, Encode, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
         #[rasn(automatic_tags)]
-        pub struct ExtendedOptions {
+        pub struct ConstrainedOptions {
             pub a: Option<HashedId3>,
         }
-        round_trip!(coer, ExtendedOptions, ExtendedOptions { a: None }, &[0x00]);
         round_trip!(
             coer,
-            ExtendedOptions,
-            ExtendedOptions {
+            ConstrainedOptions,
+            ConstrainedOptions { a: None },
+            &[0x00]
+        );
+        round_trip!(
+            coer,
+            ConstrainedOptions,
+            ConstrainedOptions {
                 a: Some(HashedId3(OctetString::from_static(&[0x01, 0x02, 0x03])))
             },
             &[0x80, 0x01, 0x02, 0x03]
