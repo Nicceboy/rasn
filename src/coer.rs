@@ -1245,7 +1245,7 @@ mod tests {
                 a: Some(OctetString::from_static(&[0x00, 0x01, 0x02])),
                 omitted: Some(())
             },
-            &[0x00]
+            &[192, 3, 0, 1, 2, 2, 7, 128, 0]
         );
     }
 }
