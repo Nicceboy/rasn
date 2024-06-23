@@ -154,19 +154,30 @@ pub struct MissingCrlIdentifier {
 }
 #[derive(AsnType, Debug, Decode, Encode, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
 #[rasn(automatic_tags)]
-// #[non_exhaustive]
+#[non_exhaustive]
 pub struct ExtendedOptions {
-    // pub a: HashedId3,
+    pub a: HashedId3,
     pub b: Option<HashedId3>,
-    // pub c: Option<MissingCrlIdentifier>,
-    // #[rasn(extension_addition)]
-    // pub d: Option<SequenceOf<HashedId3>>,
+    pub c: Option<MissingCrlIdentifier>,
+    #[rasn(extension_addition)]
+    pub d: Option<SequenceOf<HashedId3>>,
+}
+
+#[derive(AsnType, Debug, Encode, Decode, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[rasn(automatic_tags)]
+#[non_exhaustive]
+pub struct Omitted {
+    pub data: Option<HashedId3>,
+    pub ext_data_hash: Option<OctetString>,
+    #[rasn(extension_addition)]
+    pub omitted: Option<()>,
 }
 
 #[allow(unused_macros)]
 macro_rules! populate {
     ($codec:ident, $asn_typ:expr, $typ:ty, $value:expr, $case:expr) => {{
         let value: $typ = $value;
+        debug_object(&value, stringify!($codec));
         let actual_encoding = rasn::$codec::encode(&value).unwrap();
         debug_bytes(&actual_encoding, stringify!($codec));
         let decoded_value: $typ = rasn::$codec::decode(&actual_encoding).unwrap();
@@ -331,31 +342,29 @@ mod tests {
     }
     #[test]
     fn test_extended_options() {
-        log::set_logger(&LOGGER);
-        log::set_max_level(LevelFilter::Debug);
         let data = ExtendedOptions {
-            // a: HashedId3(OctetString::from_static(&[0x01, 0x02, 0x03])),
+            a: HashedId3(OctetString::from_static(&[0x01, 0x02, 0x03])),
             b: Some(HashedId3(OctetString::from_static(&[0x06, 0x07, 0x08]))),
-            // c: Some(MissingCrlIdentifier {
-            //     craca_id: HashedId3(OctetString::from_static(&[0x01, 0x02, 0x03])),
-            //     crl_series: Uint16(15),
-            // }),
-            // d: None, // d: Some(SequenceOf::from(vec![
-            //     HashedId3(OctetString::from_static(&[0x01, 0x02, 0x03])),
-            //     HashedId3(OctetString::from_static(&[0x01, 0x02, 0x03])),
-            // ])),
+            c: Some(MissingCrlIdentifier {
+                craca_id: HashedId3(OctetString::from_static(&[0x01, 0x02, 0x03])),
+                crl_series: Uint16(15),
+            }),
+            d: Some(SequenceOf::from(vec![
+                HashedId3(OctetString::from_static(&[0x01, 0x02, 0x03])),
+                HashedId3(OctetString::from_static(&[0x01, 0x02, 0x03])),
+            ])),
         };
         populate!(coer, ASN1Types::Sequence, ExtendedOptions, data, 1);
-        // let data2 = ExtendedOptions {
-        //     a: HashedId3(OctetString::from_static(&[0x11, 0x22, 0x33])),
-        //     b: None,
-        // c: Some(MissingCrlIdentifier {
-        //     craca_id: HashedId3(OctetString::from_static(&[0x11, 0x22, 0x33])),
-        //     crl_series: Uint16(1),
-        // }),
-        // d: None,
-        // };
-        // populate!(coer, ASN1Types::Sequence, ExtendedOptions, data2, 2);
+        let data2 = ExtendedOptions {
+            a: HashedId3(OctetString::from_static(&[0x11, 0x22, 0x33])),
+            b: None,
+            c: Some(MissingCrlIdentifier {
+                craca_id: HashedId3(OctetString::from_static(&[0x11, 0x22, 0x33])),
+                crl_series: Uint16(1),
+            }),
+            d: None,
+        };
+        populate!(coer, ASN1Types::Sequence, ExtendedOptions, data2, 2);
     }
     #[test]
     fn test_personnel_record() {
@@ -381,6 +390,41 @@ mod tests {
             ASN1Types::Sequence,
             ExtensiblePersonnelRecord,
             data,
+            1
+        );
+    }
+    #[test]
+    fn test_null_option() {
+        log::set_logger(&LOGGER);
+        log::set_max_level(LevelFilter::Debug);
+        // let data = Omitted {
+        //     data: None,
+        //     ext_data_hash: None,
+        //     omitted: None,
+        // };
+        // populate!(coer, ASN1Types::Sequence, Omitted, data, 1);
+        // let data2: Omitted = Omitted {
+        //     data: Some(HashedId3(OctetString::from_static(&[0x01, 0x02, 0x03]))),
+        //     ext_data_hash: Some(OctetString::from_static(&[0x01, 0x02, 0x03])),
+        //     omitted: Some(()),
+        // };
+        // populate!(coer, ASN1Types::Sequence, Omitted, data2, 2);
+        #[derive(AsnType, Debug, Encode, Decode, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+        #[rasn(automatic_tags)]
+        #[non_exhaustive]
+        pub struct Omitted2 {
+            pub a: Option<OctetString>,
+            #[rasn(extension_addition)]
+            pub omitted: Option<()>,
+        }
+        populate!(
+            coer,
+            ASN1Types::Sequence,
+            Omitted2,
+            Omitted2 {
+                a: Some(OctetString::from_static(&[0x00, 0x01, 0x02])),
+                omitted: Some(())
+            },
             1
         );
     }

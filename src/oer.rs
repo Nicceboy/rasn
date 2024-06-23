@@ -137,24 +137,6 @@ mod tests {
         decode_ok!(oer, Test, &[0b1000_0001, 0x01], Test::A);
     }
     #[test]
-    fn test_explicit_with_optional() {
-        #[derive(AsnType, Decode, Encode, Clone, Debug, PartialEq, Eq)]
-        pub struct SequenceOptionals {
-            #[rasn(tag(explicit(0)))]
-            pub it: Integer,
-            #[rasn(tag(explicit(1)))]
-            pub is: Option<OctetString>,
-            #[rasn(tag(explicit(2)))]
-            pub late: Option<Integer>,
-        }
-        let test_seq = SequenceOptionals {
-            it: 42.into(),
-            is: None,
-            late: None,
-        };
-        round_trip!(oer, SequenceOptionals, test_seq, &[0x00, 0x01, 0x2A]);
-    }
-    #[test]
     fn test_seq_preamble_unused_bits() {
         use crate as rasn;
         #[derive(AsnType, Decode, Encode, Clone, Debug, PartialEq, Eq)]

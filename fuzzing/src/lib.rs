@@ -9,7 +9,7 @@ pub mod fuzz_types;
 
 // use fuzz_types::*;
 use fuzz_types::{
-    Choice1, ExtendedOptions, Sequence1, SequenceOptionals, SingleSizeConstrainedBitString,
+    Choice1, ExtendedOptions, Omitted, Sequence1, SequenceOptionals, SingleSizeConstrainedBitString,
 };
 use log::{debug, error, info, warn, Level, LevelFilter, Metadata, Record};
 use rasn::prelude::*;
@@ -39,7 +39,8 @@ fn debug_bytes(data: &[u8], codec: &str) {
 }
 #[cfg(debug_assertions)]
 fn debug_object<T: std::fmt::Debug>(data: T, codec: &str) {
-    debug!(data:?; "{codec} decoded data");
+    // debug!(data:?; "{codec} decoded data");
+    debug!("{data:?} {codec} decoded data");
 }
 
 macro_rules! fuzz_any_type_fn {
@@ -57,7 +58,7 @@ macro_rules! fuzz_any_type_fn {
                     let decoded = rasn::$codec::decode::<T>(&encoded).unwrap();
                     #[cfg(debug_assertions)]
                     debug_object(&decoded, stringify!($codec));
-                    assert_eq!(value, decoded);
+                    pretty_assertions::assert_eq!(value, decoded);
                 }
                 Err(e) => {
                     #[cfg(debug_assertions)]
@@ -86,7 +87,8 @@ pub fn fuzz_codec(data: &[u8]) {
     // fuzz_coer::<Ia5String>(data);
     // fuzz_oer::<rasn::examples::personnel::PersonnelRecord>(data);
     // fuzz_oer::<rasn::examples::personnel::PersonnelRecordWithConstraints>(data);
-    fuzz_oer::<ExtendedOptions>(data);
+    // fuzz_oer::<ExtendedOptions>(data);
+    fuzz_coer::<Omitted>(data);
     // fuzz_coer::<Choice1>(data);
     // fuzz_coer::<IntegerA>(data);
     // fuzz_coer::<IntegerB>(data);
