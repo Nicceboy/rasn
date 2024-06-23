@@ -1228,4 +1228,24 @@ mod tests {
             &[0x80, 0x01, 0x02, 0x03]
         );
     }
+    #[test]
+    fn test_null_in_option() {
+        #[derive(AsnType, Debug, Encode, Decode, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+        #[rasn(automatic_tags)]
+        #[non_exhaustive]
+        pub struct Omitted {
+            pub a: Option<OctetString>,
+            #[rasn(extension_addition)]
+            pub omitted: Option<()>,
+        }
+        round_trip!(
+            coer,
+            Omitted,
+            Omitted {
+                a: Some(OctetString::from_static(&[0x00, 0x01, 0x02])),
+                omitted: Some(())
+            },
+            &[0x00]
+        );
+    }
 }
