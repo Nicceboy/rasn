@@ -46,7 +46,7 @@ impl<T: crate::Encode> crate::Encode for InstanceOf<T> {
     }
 }
 
-impl<T: AsnType> crate::types::Constructed for InstanceOf<T> {
+impl<T: AsnType, const N: usize> crate::types::Constructed<N> for InstanceOf<T> {
     const FIELDS: Fields = Fields::from_static(&[
         Field {
             tag: ObjectIdentifier::TAG,

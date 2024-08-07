@@ -94,9 +94,10 @@ pub trait AsnType {
 }
 
 /// A `SET` or `SEQUENCE` value.
-pub trait Constructed {
+pub trait Constructed<const N: usize = 0> {
     /// Fields contained in the "root component list".
     const FIELDS: self::fields::Fields;
+    const FIELDS_COUNT: usize = N;
     /// Fields contained in the list of extensions.
     const EXTENDED_FIELDS: Option<self::fields::Fields> = None;
 }

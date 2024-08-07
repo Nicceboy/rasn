@@ -5,25 +5,31 @@ use crate::types::{Tag, TagTree};
 #[derive(Debug, Clone)]
 pub struct Fields {
     fields: Cow<'static, [Field]>,
+    pub length: usize,
 }
 
 impl Fields {
-    pub const fn new(fields: Cow<'static, [Field]>) -> Self {
-        Self { fields }
+    pub const fn new_const<const N: usize>(fields: Cow<'static, [Field]>) -> Self {
+        Self { fields, length: N }
+    }
+    pub fn new(fields: Cow<'static, [Field]>) -> Self {
+        let length = fields.len();
+        Self { fields, length }
     }
 
     pub const fn empty() -> Self {
-        Self::new(Cow::Borrowed(&[]))
+        Self::new_const::<0>(Cow::Borrowed(&[]))
     }
 
     pub const fn from_static(fields: &'static [Field]) -> Self {
         Self {
             fields: Cow::Borrowed(fields),
+            length: fields.len(),
         }
     }
 
-    pub fn len(&self) -> usize {
-        self.fields.len()
+    pub const fn len(&self) -> usize {
+        self.length
     }
 
     pub fn is_empty(&self) -> bool {
