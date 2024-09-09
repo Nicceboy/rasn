@@ -788,7 +788,7 @@ impl crate::Encoder for Encoder {
     }
     fn encode_any(&mut self, tag: Tag, value: &types::Any) -> Result<Self::Ok, Self::Error> {
         self.set_bit(tag, true)?;
-        self.encode_octet_string(tag, <_>::default(), &value.contents)
+        self.encode_octet_string(tag, Constraints::default(), &value.contents)
     }
 
     fn encode_bit_string(
@@ -905,7 +905,7 @@ impl crate::Encoder for Encoder {
         self.set_bit(tag, true)?;
         let mut encoder = crate::der::enc::Encoder::new(crate::der::enc::EncoderOptions::der());
         let der = encoder.object_identifier_as_bytes(oid)?;
-        self.encode_octet_string(tag, <_>::default(), &der)
+        self.encode_octet_string(tag, Constraints::default(), &der)
     }
 
     fn encode_octet_string(
@@ -948,7 +948,7 @@ impl crate::Encoder for Encoder {
         value: &types::GeneralString,
     ) -> Result<Self::Ok, Self::Error> {
         self.set_bit(tag, true)?;
-        self.encode_octet_string(tag, <_>::default(), value)
+        self.encode_octet_string(tag, Constraints::default(), value)
     }
 
     fn encode_printable_string(
@@ -998,7 +998,7 @@ impl crate::Encoder for Encoder {
         value: &str,
     ) -> Result<Self::Ok, Self::Error> {
         self.set_bit(tag, true)?;
-        self.encode_octet_string(tag, <_>::default(), value.as_bytes())
+        self.encode_octet_string(tag, Constraints::default(), value.as_bytes())
     }
 
     fn encode_utc_time(
@@ -1007,7 +1007,7 @@ impl crate::Encoder for Encoder {
         value: &types::UtcTime,
     ) -> Result<Self::Ok, Self::Error> {
         self.set_bit(tag, true)?;
-        self.encode_octet_string(tag, <_>::default(), &crate::der::encode(value)?)
+        self.encode_octet_string(tag, Constraints::default(), &crate::der::encode(value)?)
     }
 
     fn encode_generalized_time(
@@ -1016,12 +1016,12 @@ impl crate::Encoder for Encoder {
         value: &types::GeneralizedTime,
     ) -> Result<Self::Ok, Self::Error> {
         self.set_bit(tag, true)?;
-        self.encode_octet_string(tag, <_>::default(), &crate::der::encode(value)?)
+        self.encode_octet_string(tag, Constraints::default(), &crate::der::encode(value)?)
     }
 
     fn encode_date(&mut self, tag: Tag, value: &types::Date) -> Result<Self::Ok, Self::Error> {
         self.set_bit(tag, true)?;
-        self.encode_octet_string(tag, <_>::default(), &crate::der::encode(value)?)
+        self.encode_octet_string(tag, Constraints::default(), &crate::der::encode(value)?)
     }
 
     fn encode_sequence_of<E: Encode>(
@@ -1220,7 +1220,7 @@ impl crate::Encoder for Encoder {
                 if output.is_empty() {
                     output.push(0);
                 }
-                self.encode_octet_string_into_buffer(<_>::default(), &output, &mut buffer)?;
+                self.encode_octet_string_into_buffer(Constraints::default(), &output, &mut buffer)?;
             }
             (_, None) => {
                 buffer.extend(choice_encoder.output);

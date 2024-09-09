@@ -2,7 +2,7 @@ use super::IntegerType;
 use alloc::borrow::Cow;
 use num_bigint::BigInt;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct Constraints<'constraint>(pub Cow<'constraint, [Constraint]>);
 
 impl<'r> Constraints<'r> {
@@ -10,6 +10,10 @@ impl<'r> Constraints<'r> {
 
     pub const fn new(constraints: &'r [Constraint]) -> Self {
         Self(Cow::Borrowed(constraints))
+    }
+
+    pub const fn default() -> Self {
+        Self::NONE
     }
 
     /// Overrides a set of constraints with another set.

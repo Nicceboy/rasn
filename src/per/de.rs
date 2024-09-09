@@ -636,7 +636,7 @@ impl<'input> crate::Decoder for Decoder<'input> {
         let mut octet_string = types::BitString::default();
         let codec = self.codec();
 
-        self.decode_extensible_container(<_>::default(), |input, length| {
+        self.decode_extensible_container(Constraints::default(), |input, length| {
             let (input, part) = nom::bytes::streaming::take(length * 8)(input)
                 .map_err(|e| DecodeError::map_nom_err(e, codec))?;
             octet_string.extend(&*part);
@@ -783,19 +783,19 @@ impl<'input> crate::Decoder for Decoder<'input> {
     }
 
     fn decode_generalized_time(&mut self, tag: Tag) -> Result<types::GeneralizedTime> {
-        let bytes = self.decode_octet_string(tag, <_>::default())?;
+        let bytes = self.decode_octet_string(tag, Constraints::default())?;
 
         crate::ber::decode(&bytes)
     }
 
     fn decode_utc_time(&mut self, tag: Tag) -> Result<types::UtcTime> {
-        let bytes = self.decode_octet_string(tag, <_>::default())?;
+        let bytes = self.decode_octet_string(tag, Constraints::default())?;
 
         crate::ber::decode(&bytes)
     }
 
     fn decode_date(&mut self, tag: Tag) -> core::result::Result<types::Date, Self::Error> {
-        let bytes = self.decode_octet_string(tag, <_>::default())?;
+        let bytes = self.decode_octet_string(tag, Constraints::default())?;
 
         crate::ber::decode(&bytes)
     }
