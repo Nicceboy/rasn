@@ -1,7 +1,11 @@
 use alloc::{collections::VecDeque, string::ToString, vec::Vec};
 use bitvec::field::BitField;
 
-use super::{FOURTY_EIGHT_K, SIXTEEN_K, SIXTY_FOUR_K, THIRTY_TWO_K};
+use super::{
+    FOURTY_EIGHT_K, LARGE_UNSIGNED_CONSTRAINT, SIXTEEN_K, SIXTY_FOUR_K, SMALL_UNSIGNED_CONSTRAINT,
+    THIRTY_TWO_K,
+};
+pub use crate::error::DecodeError;
 use crate::types::IntegerType;
 use crate::{
     de::Error as _,
@@ -14,8 +18,6 @@ use crate::{
     },
     Decode,
 };
-
-pub use crate::error::DecodeError;
 pub type Result<T, E = DecodeError> = core::result::Result<T, E>;
 
 type InputSlice<'input> = nom_bitvec::BSlice<'input, u8, bitvec::order::Msb0>;
@@ -348,12 +350,11 @@ impl<'input> Decoder<'input> {
 
     fn parse_normally_small_integer<I: IntegerType>(&mut self) -> Result<I> {
         let is_large = self.parse_one_bit()?;
-        let constraints = if is_large {
-            constraints::Value::new(constraints::Bounded::start_from(0)).into()
+        if is_large {
+            self.parse_integer::<I>(LARGE_UNSIGNED_CONSTRAINT)
         } else {
-            constraints::Value::new(constraints::Bounded::new(0, 63)).into()
-        };
-        self.parse_integer::<I>(Constraints::new(&[constraints]))
+            self.parse_integer::<I>(SMALL_UNSIGNED_CONSTRAINT)
+        }
     }
 
     fn parse_non_negative_binary_integer<I: types::IntegerType>(
@@ -1009,10 +1010,11 @@ impl<'input> crate::Decoder for Decoder<'input> {
                 debug_assert!(variance > 0);
                 // https://github.com/XAMPPRocky/rasn/issues/168
                 // Choice index starts from zero, so we need to reduce variance by one
-                let choice_range =
-                    constraints::Value::new(constraints::Bounded::new(0, (variance - 1) as i128))
-                        .into();
-                self.parse_integer(Constraints::new(&[choice_range]))
+                // let choice_range =
+                //     constraints::Value::new(constraints::Bounded::new(0, (variance - 1) as i128))
+                //         .into();
+                //                     E::VARIANCE_CONSTRAINT,
+                self.parse_integer(D::VARIANCE_CONSTRAINT)
                     .map_err(|error| {
                         DecodeError::choice_index_exceeds_platform_width(
                             usize::BITS,

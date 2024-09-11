@@ -384,52 +384,56 @@ mod tests {
         // round_trip!(aper, F, F { a: true, b: "123".try_into().unwrap() }, &[0x80, 0x31, 0x32, 0x33]);
         // round_trip!(aper, G, G { a: true, b: "1".try_into().unwrap() }, &[0xcc, 0x40]);
         // round_trip!(aper, H, H { a: true, b: "1".try_into().unwrap() }, &[0xa0, 0x31]);
+        const PERMITTED_CONSTRAINT: Constraints = Constraints::new(&[
+            Constraint::PermittedAlphabet(constraints::Extensible::new(PermittedAlphabet::new(&[
+                b'a' as u32,
+                b'b' as u32,
+                b'c' as u32,
+                b'd' as u32,
+                b'e' as u32,
+                b'f' as u32,
+                b'g' as u32,
+                b'h' as u32,
+                b'i' as u32,
+                b'j' as u32,
+                b'k' as u32,
+                b'l' as u32,
+                b'm' as u32,
+                b'n' as u32,
+                b'o' as u32,
+                b'p' as u32,
+                b'q' as u32,
+                b'r' as u32,
+                b's' as u32,
+                b't' as u32,
+                b'u' as u32,
+                b'v' as u32,
+                b'w' as u32,
+                b'x' as u32,
+                b'y' as u32,
+                b'z' as u32,
+            ]))),
+            Constraint::Size(constraints::Extensible::new(Size::new(Bounded::const_new(
+                1, 255,
+            )))),
+        ]);
         round_trip_with_constraints!(
             aper,
             VisibleString,
-            Constraints::new(&[
-                Constraint::PermittedAlphabet(
-                    PermittedAlphabet::new(&[
-                        b'a' as u32,
-                        b'b' as u32,
-                        b'c' as u32,
-                        b'd' as u32,
-                        b'e' as u32,
-                        b'f' as u32,
-                        b'g' as u32,
-                        b'h' as u32,
-                        b'i' as u32,
-                        b'j' as u32,
-                        b'k' as u32,
-                        b'l' as u32,
-                        b'm' as u32,
-                        b'n' as u32,
-                        b'o' as u32,
-                        b'p' as u32,
-                        b'q' as u32,
-                        b'r' as u32,
-                        b's' as u32,
-                        b't' as u32,
-                        b'u' as u32,
-                        b'v' as u32,
-                        b'w' as u32,
-                        b'x' as u32,
-                        b'y' as u32,
-                        b'z' as u32,
-                    ])
-                    .into()
-                ),
-                Constraint::Size(Size::new(Bounded::new(1, 255)).into())
-            ]),
+            PERMITTED_CONSTRAINT,
             VisibleString::try_from("hej").unwrap(),
             &[0x02, 0x68, 0x65, 0x6a]
         );
+        const PERMITTED_CONSTRAINT_2: Constraints =
+            Constraints::new(
+                &[Constraint::PermittedAlphabet(constraints::Extensible::new(
+                    PermittedAlphabet::new(&[b'a' as u32]),
+                ))],
+            );
         round_trip_with_constraints!(
             aper,
             VisibleString,
-            Constraints::new(&[Constraint::PermittedAlphabet(
-                PermittedAlphabet::new(&[b'a' as u32,]).into()
-            ),]),
+            PERMITTED_CONSTRAINT_2,
             VisibleString::try_from("a").unwrap(),
             &[0x01]
         );

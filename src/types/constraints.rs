@@ -1,15 +1,15 @@
 use super::IntegerType;
-use alloc::borrow::Cow;
+use core::mem::discriminant;
 use num_bigint::BigInt;
 
 #[derive(Debug, Clone)]
-pub struct Constraints<'constraint>(pub Cow<'constraint, [Constraint]>);
+pub struct Constraints<const N: usize = 4>(pub &'static [Constraint]);
 
-impl<'r> Constraints<'r> {
-    pub const NONE: Self = Self(Cow::Borrowed(&[]));
+impl Constraints {
+    pub const NONE: Self = Self(&[]);
 
-    pub const fn new(constraints: &'r [Constraint]) -> Self {
-        Self(Cow::Borrowed(constraints))
+    pub const fn new(constraints: &'static [Constraint]) -> Self {
+        Self(constraints)
     }
 
     pub const fn default() -> Self {
@@ -18,19 +18,29 @@ impl<'r> Constraints<'r> {
 
     /// Overrides a set of constraints with another set.
     #[inline(always)]
-    pub fn override_constraints(mut self, mut rhs: Constraints) -> Constraints {
-        let mut i = 0;
-        while i < self.0.len() {
-            if !rhs.0.iter().any(|child| child.kind() == self.0[i].kind()) {
-                // No matching constraint in rhs, so move it
-                let parent = self.0.to_mut().swap_remove(i);
-                rhs.0.to_mut().push(parent);
-            } else {
-                i += 1;
+    pub const fn override_constraints(mut self, mut rhs: Constraints) -> Constraints {
+        let mut si = 0;
+        let mut ri = 0;
+        while si < self.0.len() {
+            while ri < rhs.0.len() {
+                if self.0[si].kind().eq(&rhs.0[ri].kind()) {
+                    // No matching constraint in rhs, so move it
+                    // let parent = self.0.swap_remove(i);
+                    // dbg!(si);
+                    ri += 1;
+                } else {
+                    ri += 1;
+                    break;
+                }
+                si += 1;
             }
         }
         rhs
     }
+
+    // pub fn override_constraints(self, rhs: Constraints) -> Constraints {
+    //     rhs
+    // }
 
     pub fn size(&self) -> Option<&Extensible<Size>> {
         self.0.iter().find_map(|constraint| constraint.to_size())
@@ -53,14 +63,14 @@ impl<'r> Constraints<'r> {
     }
 }
 
-impl<'r> From<&'r [Constraint]> for Constraints<'r> {
-    fn from(constraints: &'r [Constraint]) -> Self {
+impl From<&'static [Constraint]> for Constraints {
+    fn from(constraints: &'static [Constraint]) -> Self {
         Self::new(constraints)
     }
 }
 
-impl<'r, const N: usize> From<&'r [Constraint; N]> for Constraints<'r> {
-    fn from(constraints: &'r [Constraint; N]) -> Self {
+impl<const N: usize> From<&'static [Constraint; N]> for Constraints {
+    fn from(constraints: &'static [Constraint; N]) -> Self {
         Self::new(constraints)
     }
 }
@@ -75,12 +85,17 @@ pub enum Constraint {
     Extensible,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy)]
 pub enum ConstraintDiscriminant {
     Value,
     Size,
     PermittedAlphabet,
     Extensible,
+}
+impl ConstraintDiscriminant {
+    pub const fn eq(&self, other: &ConstraintDiscriminant) -> bool {
+        *self as isize == *other as isize
+    }
 }
 
 impl Constraint {
@@ -297,12 +312,12 @@ impl Size {
 
     #[must_use]
     /// Returns whether the size is fixed.
-    pub fn is_fixed(&self) -> bool {
+    pub const fn is_fixed(&self) -> bool {
         matches!(self.0, Bounded::Single(_))
     }
     /// Returns whether the size has a varying range.
     #[must_use]
-    pub fn is_range(&self) -> bool {
+    pub const fn is_range(&self) -> bool {
         matches!(self.0, Bounded::Range { .. })
     }
 }
@@ -649,6 +664,153 @@ impl<T: core::fmt::Display> core::fmt::Display for Bounded<T> {
         }
     }
 }
+/// Helper macro to create constant value constraints.
+///
+/// Usage:
+/// ```rust
+// Full range
+// let full_range = value_constraint!(0, 100);
+// Only start specified
+// let start_only = value_constraint!(start: 0);
+// Only end specified
+// let end_only = value_constraint!(end: 100);
+// Single value
+// let single = value_constraint!(42);
+// Full range with extensibility
+// let ext_full_range = value_constraint!(0, 100, true);
+// Only start with extensibility
+// let ext_start_only = value_constraint!(start: 0, true);
+// Only end with extensibility
+// let ext_end_only = value_constraint!(end: 100, false);
+// Single value with extensibility
+/// let ext_single = value_constraint!(42, true);
+/// ```
+#[macro_export]
+macro_rules! value_constraint {
+    ($($args:tt)*) => {
+        $crate::bounded_constraint!(Value, $($args)*)
+    };
+}
+
+#[macro_export]
+macro_rules! size_constraint {
+    ($($args:tt)*) => {
+        $crate::bounded_constraint!(Size, $($args)*)
+    };
+}
+
+#[macro_export]
+macro_rules! constraints {
+    ($($constraint:expr),+ $(,)?) => {
+        $crate::types::constraints::Constraints(&[$($constraint),+])
+    };
+}
+
+#[macro_export]
+macro_rules! permitted_alphabet_constraint {
+    ( $alphabet:expr) => {
+        $crate::types::constraints::Constraint::PermittedAlphabet(
+            $crate::types::constraints::Extensible::new(
+                $crate::types::constraints::PermittedAlphabet::new($alphabet),
+            ),
+        )
+    };
+}
+
+#[macro_export]
+macro_rules! bounded_constraint {
+    // Start and end
+    ($constraint_type:ident, $start:expr, $end:expr) => {
+        $crate::types::constraints::Constraint::$constraint_type(
+            $crate::types::constraints::Extensible::new(
+                $crate::types::constraints::$constraint_type::new(
+                    $crate::types::constraints::Bounded::const_new($start, $end),
+                ),
+            ),
+        )
+    };
+
+    // Only start provided
+    ($constraint_type:ident, start: $start:expr) => {
+        $crate::types::constraints::Constraint::$constraint_type(
+            $crate::types::constraints::Extensible::new(
+                $crate::types::constraints::$constraint_type::new(
+                    $crate::types::constraints::Bounded::start_from($start),
+                ),
+            ),
+        )
+    };
+
+    // Only end provided
+    ($constraint_type:ident, end: $end:expr) => {
+        $crate::types::constraints::Constraint::$constraint_type(
+            $crate::types::constraints::Extensible::new(
+                $crate::types::constraints::$constraint_type::new(
+                    $crate::types::constraints::Bounded::up_to($end),
+                ),
+            ),
+        )
+    };
+
+    // Single value
+    ($constraint_type:ident, $single:expr) => {
+        $crate::types::constraints::Constraint::$constraint_type(
+            $crate::types::constraints::Extensible::new(
+                $crate::types::constraints::$constraint_type::new(
+                    $crate::types::constraints::Bounded::Single($single),
+                ),
+            ),
+        )
+    };
+
+    // Range with extensibility
+    ($constraint_type:ident, $start:expr, $end:expr, $extensible:expr) => {
+        $crate::types::constraints::Constraint::$constraint_type(
+            $crate::types::constraints::Extensible::new(
+                $crate::types::constraints::$constraint_type::new(
+                    $crate::types::constraints::Bounded::const_new($start, $end),
+                ),
+            )
+            .set_extensible($extensible),
+        )
+    };
+
+    // Only start with extensibility
+    ($constraint_type:ident, start: $start:expr, $extensible:expr) => {
+        $crate::types::constraints::Constraint::$constraint_type(
+            $crate::types::constraints::Extensible::new(
+                $crate::types::constraints::$constraint_type::new(
+                    $crate::types::constraints::Bounded::start_from($start),
+                ),
+            )
+            .set_extensible($extensible),
+        )
+    };
+
+    // Only end with extensibility
+    ($constraint_type:ident, end: $end:expr, $extensible:expr) => {
+        $crate::types::constraints::Constraint::$constraint_type(
+            $crate::types::constraints::Extensible::new(
+                $crate::types::constraints::$constraint_type::new(
+                    $crate::types::constraints::Bounded::up_to($end),
+                ),
+            )
+            .set_extensible($extensible),
+        )
+    };
+
+    // Single value with extensibility
+    ($constraint_type:ident, $single:expr, $extensible:expr) => {
+        $crate::types::constraints::Constraint::$constraint_type(
+            $crate::types::constraints::Extensible::new(
+                $crate::types::constraints::$constraint_type::new(
+                    $crate::types::constraints::Bounded::Single($single),
+                ),
+            )
+            .set_extensible($extensible),
+        )
+    };
+}
 
 #[cfg(test)]
 mod tests {
@@ -660,14 +822,13 @@ mod tests {
         assert_eq!(256, constraints.range().unwrap());
     }
     #[test]
-    fn check_const_validity() {
-        const MY_CONST: Constraints = Constraints::new(&[Constraint::Value(
-            Extensible::new(Value::new(Bounded::const_new(
-                0i128 as i128,
-                255i128 as i128,
-            )))
-            .set_extensible(false),
-        )]);
-        dbg!(MY_CONST);
+    fn test_concat_constraints() {
+        let a = [Constraint::Value(Extensible::new(Value::new(Bounded::Single(0)))); 1];
+        let b = [Constraint::Size(Extensible::new(Size::new(Bounded::Single(0)))); 1];
+        let c = concat_constraints(a, b);
+
+        const COMBINED_CONSTRAINTS: [Constraint; 2] = concat_constraints(a, b);
+
+        const RESULT: &'static [Constraint] = &COMBINED_CONSTRAINTS;
     }
 }

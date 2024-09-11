@@ -985,7 +985,8 @@ mod tests {
 
     use super::*;
     use crate::prelude::{AsnType, Decode, Encode};
-    use crate::types::constraints::{Bounded, Constraint, Extensible, Value};
+    use crate::types::constraints::Constraints;
+    use crate::{constraints, value_constraint};
 
     #[test]
     fn test_encode_bool() {
@@ -1002,20 +1003,15 @@ mod tests {
     }
     #[test]
     fn test_encode_integer_manual_setup() {
-        let range_bound = Bounded::<i128>::Range {
-            start: 0.into(),
-            end: 255.into(),
-        };
-        let value_range = &[Constraint::Value(Extensible::new(Value::new(range_bound)))];
-        let consts = Constraints::new(value_range);
+        const CONSTRAINT_1: Constraints = constraints!(value_constraint!(0, 255));
         let mut encoder = Encoder::default();
-        let result = encoder.encode_integer_with_constraints(Tag::INTEGER, &consts, &244);
+        let result = encoder.encode_integer_with_constraints(Tag::INTEGER, &CONSTRAINT_1, &244);
         assert!(result.is_ok());
         let v = vec![244u8];
         assert_eq!(encoder.output, v);
         encoder.output.clear();
         let value = BigInt::from(256);
-        let result = encoder.encode_integer_with_constraints(Tag::INTEGER, &consts, &value);
+        let result = encoder.encode_integer_with_constraints(Tag::INTEGER, &CONSTRAINT_1, &value);
         assert!(result.is_err());
     }
     #[test]

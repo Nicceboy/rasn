@@ -89,7 +89,7 @@ pub trait AsnType {
     /// `Leaf` that points [`Self::TAG`].
     const TAG_TREE: TagTree = TagTree::Leaf(Self::TAG);
 
-    const CONSTRAINTS: Constraints<'static> = Constraints::NONE;
+    const CONSTRAINTS: Constraints = Constraints::NONE;
 
     /// Identifier of an ASN.1 type as specified in the original specification
     /// if not identical with the identifier of `Self`
@@ -108,6 +108,8 @@ pub trait Constructed {
 pub trait Choice: Sized {
     /// Variants contained in the "root component list".
     const VARIANTS: &'static [TagTree];
+    /// Constraint for the choice type, based on the number of root components. Used for PER encoding.
+    const VARIANCE_CONSTRAINT: Constraints;
     /// Variants contained in the list of extensions.
     const EXTENDED_VARIANTS: Option<&'static [TagTree]> = None;
     /// Variant identifiers for text-based encoding rules
@@ -272,7 +274,7 @@ macro_rules! asn_integer_type {
         $(
             impl AsnType for $int {
                 const TAG: Tag = Tag::INTEGER;
-                const CONSTRAINTS: Constraints<'static> = Constraints::new(&[
+                const CONSTRAINTS: Constraints = Constraints::new(&[
                     constraints::Constraint::Value(Extensible::new(constraints::Value::new(constraints::Bounded::const_new(<$int>::MIN as i128, <$int>::MAX as i128)))),
                 ]);
             }
@@ -327,10 +329,9 @@ impl<T> AsnType for alloc::collections::BTreeSet<T> {
 
 impl<T: AsnType, const N: usize> AsnType for [T; N] {
     const TAG: Tag = Tag::SEQUENCE;
-    const CONSTRAINTS: Constraints<'static> =
-        Constraints::new(&[Constraint::Size(Extensible::new(constraints::Size::new(
-            constraints::Bounded::single_value(N),
-        )))]);
+    const CONSTRAINTS: Constraints = Constraints::new(&[Constraint::Size(Extensible::new(
+        constraints::Size::new(constraints::Bounded::single_value(N)),
+    ))]);
 }
 
 impl<T> AsnType for &'_ [T] {

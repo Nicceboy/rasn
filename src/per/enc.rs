@@ -3,7 +3,10 @@ use hashbrown::HashMap;
 
 use bitvec::prelude::*;
 
-use super::{FOURTY_EIGHT_K, SIXTEEN_K, SIXTY_FOUR_K, THIRTY_TWO_K};
+use super::{
+    FOURTY_EIGHT_K, LARGE_UNSIGNED_CONSTRAINT, SIXTEEN_K, SIXTY_FOUR_K, SMALL_UNSIGNED_CONSTRAINT,
+    THIRTY_TWO_K,
+};
 use crate::{
     types::{
         self,
@@ -417,17 +420,11 @@ impl Encoder {
         let is_large = value >= 64;
         buffer.push(is_large);
 
-        let size_constraints = if is_large {
-            constraints::Value::new(constraints::Bounded::start_from(0)).into()
+        if is_large {
+            self.encode_integer_into_buffer::<usize>(LARGE_UNSIGNED_CONSTRAINT, &value, buffer)
         } else {
-            constraints::Value::new(constraints::Bounded::new(0, 63)).into()
-        };
-
-        self.encode_integer_into_buffer::<usize>(
-            Constraints::new(&[size_constraints]),
-            &value,
-            buffer,
-        )
+            self.encode_integer_into_buffer::<usize>(SMALL_UNSIGNED_CONSTRAINT, &value, buffer)
+        }
     }
 
     fn encode_string_length(
@@ -1197,16 +1194,9 @@ impl crate::Encoder for Encoder {
         let _tag = (encode_fn)(&mut choice_encoder)?;
 
         match (index, bounds) {
-            (index, Some(Some(variance))) => {
-                // https://github.com/XAMPPRocky/rasn/issues/168
-                // Choice index starts from zero, so we need to reduce variance by one
-                let choice_range = &[constraints::Value::new(constraints::Bounded::new(
-                    0,
-                    (variance - 1) as i128,
-                ))
-                .into()];
+            (index, Some(Some(_))) => {
                 self.encode_integer_into_buffer::<usize>(
-                    Constraints::from(choice_range),
+                    E::VARIANCE_CONSTRAINT,
                     &index,
                     &mut buffer,
                 )?;
@@ -1326,7 +1316,8 @@ impl<'input> From<u8> for Input<'input> {
 mod tests {
     use super::*;
 
-    use crate::Encoder as _;
+    use crate::types::constraints;
+    use crate::{constraints, value_constraint, Encoder as _};
 
     #[derive(crate::AsnType, Default, crate::Encode, Clone, Copy)]
     #[rasn(crate_root = "crate")]
@@ -1402,12 +1393,11 @@ mod tests {
 
         impl crate::AsnType for CustomInt {
             const TAG: Tag = Tag::INTEGER;
-            const CONSTRAINTS: Constraints<'static> =
-                Constraints::new(&[constraints::Constraint::Value(
-                    constraints::Extensible::new(constraints::Value::new(
-                        constraints::Bounded::up_to(65535),
-                    )),
-                )]);
+            const CONSTRAINTS: Constraints = Constraints::new(&[constraints::Constraint::Value(
+                constraints::Extensible::new(constraints::Value::new(constraints::Bounded::up_to(
+                    65535,
+                ))),
+            )]);
         }
 
         impl crate::Encode for CustomInt {
@@ -1440,38 +1430,22 @@ mod tests {
     #[test]
     fn semi_constrained_integer() {
         let mut encoder = Encoder::new(EncoderOptions::unaligned());
+        const CONSTRAINT_1: Constraints = constraints!(value_constraint!(start: -1));
         encoder
-            .encode_integer::<i128>(
-                Tag::INTEGER,
-                Constraints::from(&[constraints::Value::from(constraints::Bounded::start_from(
-                    -1,
-                ))
-                .into()]),
-                &4096.into(),
-            )
+            .encode_integer::<i128>(Tag::INTEGER, CONSTRAINT_1, &4096.into())
             .unwrap();
 
         assert_eq!(&[2, 0b00010000, 1], &*encoder.output.clone().into_vec());
         encoder.output.clear();
+        const CONSTRAINT_2: Constraints = constraints!(value_constraint!(start: 1));
         encoder
-            .encode_integer::<i128>(
-                Tag::INTEGER,
-                Constraints::from(&[
-                    constraints::Value::from(constraints::Bounded::start_from(1)).into(),
-                ]),
-                &127.into(),
-            )
+            .encode_integer::<i128>(Tag::INTEGER, CONSTRAINT_2, &127.into())
             .unwrap();
         assert_eq!(&[1, 0b01111110], &*encoder.output.clone().into_vec());
         encoder.output.clear();
+        const CONSTRAINT_3: Constraints = constraints!(value_constraint!(start: 0));
         encoder
-            .encode_integer::<i128>(
-                Tag::INTEGER,
-                Constraints::from(&[
-                    constraints::Value::from(constraints::Bounded::start_from(0)).into(),
-                ]),
-                &128.into(),
-            )
+            .encode_integer::<i128>(Tag::INTEGER, CONSTRAINT_3, &128.into())
             .unwrap();
         assert_eq!(&[1, 0b10000000], &*encoder.output.into_vec());
     }
