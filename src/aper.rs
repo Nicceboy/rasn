@@ -38,6 +38,7 @@ pub fn encode_with_constraints<T: crate::Encode>(
 #[cfg(test)]
 mod tests {
     use crate::{
+        macros::*,
         prelude::*,
         types::{constraints::*, *},
     };
@@ -384,8 +385,8 @@ mod tests {
         // round_trip!(aper, F, F { a: true, b: "123".try_into().unwrap() }, &[0x80, 0x31, 0x32, 0x33]);
         // round_trip!(aper, G, G { a: true, b: "1".try_into().unwrap() }, &[0xcc, 0x40]);
         // round_trip!(aper, H, H { a: true, b: "1".try_into().unwrap() }, &[0xa0, 0x31]);
-        const PERMITTED_CONSTRAINT: Constraints = Constraints::new(&[
-            Constraint::PermittedAlphabet(constraints::Extensible::new(PermittedAlphabet::new(&[
+        const PERMITTED_CONSTRAINT: Constraints = constraints!(
+            permitted_alphabet_constraint!(&[
                 b'a' as u32,
                 b'b' as u32,
                 b'c' as u32,
@@ -412,11 +413,9 @@ mod tests {
                 b'x' as u32,
                 b'y' as u32,
                 b'z' as u32,
-            ]))),
-            Constraint::Size(constraints::Extensible::new(Size::new(Bounded::const_new(
-                1, 255,
-            )))),
-        ]);
+            ]),
+            size_constraint!(1, 255)
+        );
         round_trip_with_constraints!(
             aper,
             VisibleString,
@@ -425,11 +424,7 @@ mod tests {
             &[0x02, 0x68, 0x65, 0x6a]
         );
         const PERMITTED_CONSTRAINT_2: Constraints =
-            Constraints::new(
-                &[Constraint::PermittedAlphabet(constraints::Extensible::new(
-                    PermittedAlphabet::new(&[b'a' as u32]),
-                ))],
-            );
+            constraints!(permitted_alphabet_constraint!(&[b'a' as u32]));
         round_trip_with_constraints!(
             aper,
             VisibleString,
