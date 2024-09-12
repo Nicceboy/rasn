@@ -16,34 +16,46 @@ impl Constraints {
     }
 
     /// Overrides a set of constraints with another set.
-    // #[inline(always)]
-    // pub fn const override_constraints(mut self, mut rhs: Constraints) -> [Constraint; 4] {
-    //     let
-    //     let mut si = 0;
-    //     let mut ri = 0;
-    //     let mut lhs = self.0.as_mut();
-    //     let mut rrhs = rhs.0.as_mut();
-    //     while si < self.0.len() {
-    //         while ri < rrhs.len() {
-    //             if lhs[si].kind().eq(&rrhs[ri].kind()) {
-    //                 // No matching constraint in rhs, so move it
-    //                 unsafe {
-    //                     core::ptr::swap(
-    //                         &mut lhs[si] as *mut Constraint,
-    //                         &mut rrhs[ri] as *mut Constraint,
-    //                     );
-    //                 }
-    //                 ri += 1;
-    //             } else {
-    //                 ri += 1;
-    //                 break;
-    //             }
-    //             si += 1;
-    //         }
-    //     }
-    //     rhs
-    // }
-    // }
+    /// This function is used only on compile-time.
+    #[inline(always)]
+    pub(crate) const fn merge(self, rhs: Self) -> ([Constraint; 5], usize) {
+        let mut si = 0;
+        let mut ri = 0;
+        // Count of the variants in Constraint
+        const N: usize = 5;
+        let mut array: [Constraint; N] = [Constraint::Empty; N];
+        if rhs.0.len() > N || rhs.0.is_empty() {
+            panic!("rhs is smaller than N or rhs is empty")
+        }
+        // Copy rhs first to the array
+        let mut copy_index = 0;
+        while copy_index < rhs.0.len() {
+            unsafe {
+                let data: Constraint = core::mem::transmute_copy(&rhs.0[copy_index]);
+                array[copy_index] = data;
+            }
+            copy_index += 1;
+        }
+        while si < self.0.len() {
+            while ri < rhs.0.len() {
+                if !self.0[si].kind().eq(&rhs.0[ri].kind()) {
+                    if copy_index > N {
+                        panic!("copy_index is greater than N")
+                    }
+                    unsafe {
+                        let data: Constraint = core::mem::transmute_copy(&self.0[si]);
+                        array[copy_index] = data;
+                    }
+                    copy_index += 1;
+                    ri += 1;
+                } else {
+                    ri += 1;
+                }
+                si += 1;
+            }
+        }
+        (array, copy_index)
+    }
 
     pub fn override_constraints(self, rhs: Constraints) -> Constraints {
         rhs
@@ -106,7 +118,7 @@ impl<const N: usize> From<&'static [Constraint; N]> for Constraints {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Constraint {
     Value(Extensible<Value>),
     Size(Extensible<Size>),
@@ -114,6 +126,7 @@ pub enum Constraint {
     /// The value itself is extensible, only valid for constructed types,
     /// choices, or enumerated values.
     Extensible,
+    Empty,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -122,6 +135,7 @@ pub enum ConstraintDiscriminant {
     Size,
     PermittedAlphabet,
     Extensible,
+    Empty,
 }
 impl ConstraintDiscriminant {
     pub const fn eq(&self, other: &ConstraintDiscriminant) -> bool {
@@ -136,6 +150,19 @@ impl Constraint {
             Self::Size(_) => ConstraintDiscriminant::Size,
             Self::PermittedAlphabet(_) => ConstraintDiscriminant::PermittedAlphabet,
             Self::Extensible => ConstraintDiscriminant::Extensible,
+            Self::Empty => ConstraintDiscriminant::Empty,
+        }
+    }
+    pub const fn default() -> Self {
+        Self::Empty
+    }
+    pub const fn variant_as_isize(&self) -> isize {
+        match self {
+            Self::Value(_) => 0,
+            Self::Size(_) => 1,
+            Self::PermittedAlphabet(_) => 2,
+            Self::Extensible => 3,
+            Self::Empty => 4,
         }
     }
 
@@ -174,11 +201,12 @@ impl Constraint {
             Self::Size(size) => size.extensible.is_some(),
             Self::PermittedAlphabet(alphabet) => alphabet.extensible.is_some(),
             Self::Extensible => true,
+            Self::Empty => false,
         }
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Default, Copy, Clone, PartialEq)]
 pub struct Extensible<T: 'static> {
     pub constraint: T,
     /// Whether the constraint is extensible, and if it is, a list of extensible
@@ -367,7 +395,7 @@ impl core::ops::DerefMut for Size {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PermittedAlphabet(&'static [u32]);
 
 impl PermittedAlphabet {
@@ -375,7 +403,7 @@ impl PermittedAlphabet {
         Self(range)
     }
 
-    pub fn as_inner(&self) -> &'static [u32] {
+    pub const fn as_inner(&self) -> &'static [u32] {
         self.0
     }
 }
@@ -730,6 +758,14 @@ macro_rules! size_constraint {
     };
 }
 
+/// Helper macro to create an array of constant constraints.
+///
+/// Usage:
+/// ```rust
+/// use rasn::prelude::*;
+/// const CONSTRAINTS: Constraints = macros::constraints!(macros::value_constraint!(0, 100), macros::size_constraint!(0, 100));
+/// ```
+/// See other macros about the parameter usage.
 #[macro_export]
 macro_rules! constraints {
     ($($constraint:expr),+ $(,)?) => {
