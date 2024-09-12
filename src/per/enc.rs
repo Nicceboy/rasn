@@ -649,7 +649,7 @@ impl Encoder {
             return Ok(());
         } else {
             // Safe to unwrap because we checked for None above
-            constraints.value().unwrap_or_default()
+            constraints.value().unwrap()
         };
 
         if !value_range.constraint.in_bound(value) && !is_extended_value {
