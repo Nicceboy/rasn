@@ -18,6 +18,7 @@ pub(crate) mod integer;
 pub(crate) mod oid;
 pub(crate) mod strings;
 
+use crate::macros::{constraints, size_constraint, value_constraint};
 use alloc::boxed::Box;
 
 pub use {
@@ -274,9 +275,7 @@ macro_rules! asn_integer_type {
         $(
             impl AsnType for $int {
                 const TAG: Tag = Tag::INTEGER;
-                const CONSTRAINTS: Constraints = Constraints::new(&[
-                    constraints::Constraint::Value(Extensible::new(constraints::Value::new(constraints::Bounded::const_new(<$int>::MIN as i128, <$int>::MAX as i128)))),
-                ]);
+                const CONSTRAINTS: Constraints = constraints!(value_constraint!((<$int>::MIN as i128), (<$int>::MAX as i128)));
             }
         )+
     }
@@ -329,9 +328,7 @@ impl<T> AsnType for alloc::collections::BTreeSet<T> {
 
 impl<T: AsnType, const N: usize> AsnType for [T; N] {
     const TAG: Tag = Tag::SEQUENCE;
-    const CONSTRAINTS: Constraints = Constraints::new(&[Constraint::Size(Extensible::new(
-        constraints::Size::new(constraints::Bounded::single_value(N)),
-    ))]);
+    const CONSTRAINTS: Constraints = constraints!(size_constraint!(N));
 }
 
 impl<T> AsnType for &'_ [T] {
