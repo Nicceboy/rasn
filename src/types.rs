@@ -24,7 +24,7 @@ use alloc::boxed::Box;
 pub use {
     self::{
         any::Any,
-        constraints::{Constraint, Constraints, Extensible},
+        constraints::{Constraint, Constraints, Extensible, DEFAULT_CONSTRAINTS},
         instance::InstanceOf,
         integer::{ConstrainedInteger, Integer, IntegerType},
         oid::{ObjectIdentifier, Oid},

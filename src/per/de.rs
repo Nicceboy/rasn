@@ -144,7 +144,7 @@ impl<'input> Decoder<'input> {
 
     fn decode_extensible_string(
         &mut self,
-        constraints: Constraints,
+        constraints: &Constraints,
         is_large_string: bool,
         mut decode_fn: impl FnMut(InputSlice<'input>, usize) -> Result<InputSlice<'input>>,
     ) -> Result<()> {
@@ -547,7 +547,7 @@ impl<'input> Decoder<'input> {
 
         let mut total_length = 0;
         let codec = self.codec();
-        self.decode_extensible_string(constraints.clone(), is_large_string, |input, length| {
+        self.decode_extensible_string(&constraints, is_large_string, |input, length| {
             total_length += length;
             if constraints
                 .permitted_alphabet()
