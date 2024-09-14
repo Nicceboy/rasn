@@ -3,7 +3,7 @@
 
 extern crate alloc;
 
-use rasn::{types::*, Decode, Encode};
+use rasn::prelude::*;
 
 /// ID value of a corresponding request [`LdapMessage`].
 ///
