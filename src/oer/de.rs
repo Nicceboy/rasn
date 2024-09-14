@@ -10,7 +10,6 @@ use alloc::{
 };
 
 use crate::{
-    oer::ranges,
     types::{
         self,
         fields::{Field, Fields},
@@ -252,27 +251,31 @@ impl<'input> Decoder<'input> {
     ) -> Result<I, DecodeError> {
         // Only 'value' constraint is OER visible for integer
         if let Some(value) = constraints.value() {
-            ranges::determine_integer_size_and_sign(&value, self.input, |_, sign, octets| {
-                let integer = self.decode_integer_from_bytes::<I>(sign, octets.map(usize::from))?;
-                // if the value is too large for a i128, the constraint isn't satisfied
-                if let Some(constraint_integer) = integer.to_i128() {
-                    if value.constraint.contains(&constraint_integer) {
-                        Ok(integer)
-                    } else {
-                        Err(DecodeError::value_constraint_not_satisfied(
-                            integer.to_bigint().unwrap_or_default(),
-                            value.constraint.0,
-                            self.codec(),
-                        ))
-                    }
+            let (sign, octets) = if value.extensible.is_some() {
+                (true, None)
+            } else {
+                (value.constraint.get_sign(), value.constraint.get_range())
+            };
+            let integer = self.decode_integer_from_bytes::<I>(sign, octets.map(usize::from))?;
+            // if the value is too large for a i128, the constraint isn't satisfied
+            if let Some(constraint_integer) = integer.to_i128() {
+                if value.constraint.contains(&constraint_integer) {
+                    Ok(integer)
                 } else {
                     Err(DecodeError::value_constraint_not_satisfied(
                         integer.to_bigint().unwrap_or_default(),
-                        value.constraint.0,
+                        value.constraint.value,
                         self.codec(),
                     ))
                 }
-            })
+            } else {
+                Err(DecodeError::value_constraint_not_satisfied(
+                    integer.to_bigint().unwrap_or_default(),
+                    value.constraint.value,
+                    self.codec(),
+                ))
+            }
+            // })
         } else {
             // No constraints
             self.decode_integer_from_bytes::<I>(true, None)
@@ -963,7 +966,7 @@ mod tests {
     use num_bigint::BigUint;
 
     use super::*;
-    use crate::types::constraints::{Bounded, Constraint, Constraints, Extensible, Size, Value};
+    use crate::{constraints, types::constraints::Constraints, value_constraint};
     use bitvec::prelude::BitSlice;
     use num_bigint::BigInt;
 
@@ -1080,33 +1083,33 @@ mod tests {
     }
     #[test]
     fn test_integer_decode_with_constraints() {
-        let range_bound = Bounded::<i128>::Range {
-            start: 0.into(),
-            end: 255.into(),
-        };
-        let value_range = &[Constraint::Value(Extensible::new(Value::new(range_bound)))];
-        let consts = Constraints::new(value_range);
+        const CONSTRAINT_1: Constraints = constraints!(value_constraint!(0, 255));
         let data = BitString::from_slice(&[0x01u8]);
         let mut decoder = Decoder::new(&data, DecoderOptions::oer());
-        let decoded_int: i32 = decoder.decode_integer_with_constraints(&consts).unwrap();
+        let decoded_int: i32 = decoder
+            .decode_integer_with_constraints(&CONSTRAINT_1)
+            .unwrap();
         assert_eq!(decoded_int, 1);
 
         let data = BitString::from_slice(&[0xffu8]);
         let mut decoder = Decoder::new(&data, DecoderOptions::oer());
-        let decoded_int: i64 = decoder.decode_integer_with_constraints(&consts).unwrap();
+        let decoded_int: i64 = decoder
+            .decode_integer_with_constraints(&CONSTRAINT_1)
+            .unwrap();
         assert_eq!(decoded_int, 255);
 
         let data = BitString::from_slice(&[0xffu8, 0xff]);
         let mut decoder = Decoder::new(&data, DecoderOptions::oer());
-        let decoded_int: BigInt = decoder.decode_integer_with_constraints(&consts).unwrap();
+        let decoded_int: BigInt = decoder
+            .decode_integer_with_constraints(&CONSTRAINT_1)
+            .unwrap();
         assert_eq!(decoded_int, 255.into());
 
         let data = BitString::from_slice(&[0x02u8, 0xff, 0x01]);
         let mut decoder = Decoder::new(&data, DecoderOptions::oer());
+        const CONSTRAINT_2: Constraints = Constraints::default();
         let decoded_int: BigInt = decoder
-            .decode_integer_with_constraints(&Constraints::new(&[Constraint::Size(
-                Size::new(Bounded::None).into(),
-            )]))
+            .decode_integer_with_constraints(&CONSTRAINT_2)
             .unwrap();
         assert_eq!(decoded_int, BigInt::from(-255));
     }

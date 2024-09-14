@@ -578,6 +578,8 @@ impl<'config> VariantConfig<'config> {
         let tag_tree = self.tag_tree(context);
         let ident = &self.variant.ident;
         let is_explicit = self.has_explicit_tag();
+        let constraint_name = format_ident!("DECODE_CONSTRAINT_{}", context);
+        let mut const_constraint = quote! {};
 
         let decode_op = match &self.variant.fields {
             syn::Fields::Unit => {
@@ -609,12 +611,18 @@ impl<'config> VariantConfig<'config> {
                             .map(|path| quote!(#path))
                             .unwrap_or_else(|| quote!(<_>::default));
                         if let Some(constraints) = constraints {
-                            quote!(decoder.decode_default_with_tag_and_constraints(tag, #path, #constraints))
+                            const_constraint = quote! {
+                                const #constraint_name: #crate_root::types::constraints::Constraints = #constraints;
+                            };
+                            quote!(decoder.decode_default_with_tag_and_constraints(tag, #path, #constraint_name))
                         } else {
                             quote!(decoder.decode_default_with_tag(tag, #path))
                         }
                     } else if let Some(constraints) = constraints {
-                        quote!(<_>::decode_with_tag_and_constraints(decoder, tag, #constraints))
+                        const_constraint = quote! {
+                            const #constraint_name: #crate_root::types::constraints::Constraints = #constraints;
+                        };
+                        quote!(<_>::decode_with_tag_and_constraints(decoder, tag, #constraint_name))
                     } else {
                         quote!(<_>::decode_with_tag(decoder, tag))
                     }
@@ -660,6 +668,7 @@ impl<'config> VariantConfig<'config> {
 
         quote! {
             if #crate_root::types::TagTree::tag_contains(&tag, &[#tag_tree]) {
+                #const_constraint
                 return #decode_op
             }
         }
@@ -831,6 +840,7 @@ impl<'a> FieldConfig<'a> {
     pub fn encode(&self, context: usize, use_self: bool) -> proc_macro2::TokenStream {
         let this = use_self.then(|| quote!(self.));
         let tag = self.tag(context);
+        let constraint_name = format_ident!("FIELD_CONSTRAINT_{}", context);
         let i = syn::Index::from(context);
         let field = self
             .field
@@ -859,11 +869,14 @@ impl<'a> FieldConfig<'a> {
                 let constraints = self
                     .constraints
                     .const_expr(&self.container_config.crate_root)
-                    .unwrap_or_else(|| quote!(<_>::default()));
+                    .unwrap_or_else(|| quote!(#crate_root::types::Constraints::default()));
                 quote!(
+                    const #constraint_name : #crate_root::types::Constraints = #crate_root::types::Constraints::from_fixed_size(&<#ty as #crate_root::AsnType>::CONSTRAINTS.merge(
+                        #constraints
+                    ));
                     encoder.encode_extension_addition(
                         #tag,
-                        <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
+                        #constraint_name,
                         &#this #field
                     )?;
                 )
@@ -873,13 +886,16 @@ impl<'a> FieldConfig<'a> {
                 let constraints = self
                     .constraints
                     .const_expr(&self.container_config.crate_root)
-                    .unwrap_or_else(|| quote!(<_>::default()));
+                    .unwrap_or_else(|| quote!(#crate_root::types::Constraints::default()));
                 match (self.constraints.has_constraints(), self.default.is_some()) {
                     (true, true) => {
                         quote!(
+                            const #constraint_name : #crate_root::types::Constraints = #crate_root::types::Constraints::from_fixed_size(&<#ty as #crate_root::AsnType>::CONSTRAINTS.merge(
+                                #constraints
+                            ));
                             encoder.encode_default_with_tag_and_constraints(
                                 #tag,
-                                <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
+                                #constraint_name,
                                 &#this #field,
                                 #default_fn
                             )?;
@@ -887,10 +903,13 @@ impl<'a> FieldConfig<'a> {
                     }
                     (true, false) => {
                         quote!(
+                            const #constraint_name : #crate_root::types::Constraints = #crate_root::types::Constraints::from_fixed_size(&<#ty as #crate_root::AsnType>::CONSTRAINTS.merge(
+                                #constraints
+                            ));
                             #this #field.encode_with_tag_and_constraints(
                                 encoder,
                                 #tag,
-                                <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
+                                #constraint_name,
                                 #default_fn
                             )?;
                         )
@@ -905,11 +924,14 @@ impl<'a> FieldConfig<'a> {
             let constraints = self
                 .constraints
                 .const_expr(&self.container_config.crate_root)
-                .unwrap_or_else(|| quote!(<_>::default()));
+                .unwrap_or_else(|| quote!(#crate_root::types::Constraints::default()));
             quote!(
+                const #constraint_name : #crate_root::types::Constraints = #crate_root::types::Constraints::from_fixed_size(&<#ty as #crate_root::AsnType>::CONSTRAINTS.merge(
+                    #constraints
+                ));
                 encoder.encode_extension_addition(
                     #tag,
-                    <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
+                    #constraint_name,
                     &#this #field
                 )?;
             )
@@ -922,8 +944,11 @@ impl<'a> FieldConfig<'a> {
                         .constraints
                         .const_expr(&self.container_config.crate_root);
                     quote!(
+                        const #constraint_name : #crate_root::types::Constraints = #crate_root::types::Constraints::from_fixed_size(&<#ty as #crate_root::AsnType>::CONSTRAINTS.merge(
+                            #constraints
+                        ));
                         encoder.encode_default_with_constraints(
-                            <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
+                            #constraint_name,
                             &#this #field,
                             #default_fn
                         )?;
@@ -934,9 +959,12 @@ impl<'a> FieldConfig<'a> {
                         .constraints
                         .const_expr(&self.container_config.crate_root);
                     quote!(
+                        const #constraint_name : #crate_root::types::Constraints = #crate_root::types::Constraints::from_fixed_size(&<#ty as #crate_root::AsnType>::CONSTRAINTS.merge(
+                            #constraints
+                        ));
                         #this #field.encode_with_constraints(
                             encoder,
-                            <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
+                            #constraint_name,
                         )?;
                     )
                 }
@@ -973,6 +1001,7 @@ impl<'a> FieldConfig<'a> {
         let default_fn = self.default_fn();
 
         let tag = self.tag(context);
+        let constraint_name = format_ident!("CONSTRAINT_{}", context);
         let constraints = self.constraints.const_expr(crate_root);
         let handle_extension = if self.is_not_option_or_default_type() {
             quote!(.ok_or_else(|| {
@@ -1009,46 +1038,58 @@ impl<'a> FieldConfig<'a> {
                     quote!(decoder.decode_explicit_prefix(#tag) #or_else)
                 }
                 (Some(false), Some(path), true) => {
-                    quote!(
+                    quote!({
+                        const #constraint_name : #crate_root::types::Constraints = #crate_root::types::Constraints::from_fixed_size(&<#ty as #crate_root::AsnType>::CONSTRAINTS.merge(
+                            #constraints
+                        ));
                         decoder.decode_default_with_tag_and_constraints(
                             #tag,
                             #path,
-                            <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
-                        ) #or_else
+                            #constraint_name,
+                        ) #or_else }
                     )
                 }
                 (Some(false), Some(path), false) => {
                     quote!(decoder.decode_default_with_tag(#tag, #path) #or_else)
                 }
                 (Some(false), None, true) => {
-                    quote!(
+                    quote!({
+                        const #constraint_name : #crate_root::types::Constraints = #crate_root::types::Constraints::from_fixed_size(&<#ty as #crate_root::AsnType>::CONSTRAINTS.merge(
+                            #constraints
+                        ));
                         <_>::decode_with_tag_and_constraints(
                             decoder,
                             #tag,
-                            <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
-                        ) #or_else
+                            #constraint_name,
+                        ) #or_else }
                     )
                 }
                 (Some(false), None, false) => {
                     quote!(<_>::decode_with_tag(decoder, #tag) #or_else)
                 }
                 (None, Some(path), true) => {
-                    quote!(
+                    quote!({
+                        const #constraint_name : #crate_root::types::Constraints = #crate_root::types::Constraints::from_fixed_size(&<#ty as #crate_root::AsnType>::CONSTRAINTS.merge(
+                            #constraints
+                        ));
                         decoder.decode_default_with_constraints(
                             #path,
-                            <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
-                        ) #or_else
+                            #constraint_name,
+                        ) #or_else }
                     )
                 }
                 (None, Some(path), false) => {
                     quote!(decoder.decode_default(#path) #or_else)
                 }
                 (None, None, true) => {
-                    quote!(
+                    quote!({
+                        const #constraint_name : #crate_root::types::Constraints = #crate_root::types::Constraints::from_fixed_size(&<#ty as #crate_root::AsnType>::CONSTRAINTS.merge(
+                            #constraints
+                        ));
                         <_>::decode_with_constraints(
                             decoder,
-                            <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
-                        ) #or_else
+                            #constraint_name,
+                        ) #or_else }
                     )
                 }
                 (None, None, false) => {
@@ -1066,11 +1107,14 @@ impl<'a> FieldConfig<'a> {
                 self.constraints.has_constraints(),
             ) {
                 (Some(path), true) => {
-                    quote!(
+                    quote!({
+                        const #constraint_name : #crate_root::types::Constraints = #crate_root::types::Constraints::from_fixed_size(&<#ty as #crate_root::AsnType>::CONSTRAINTS.merge(
+                            #constraints
+                        ));
                         decoder.decode_extension_addition_with_default_and_constraints(
                             #path,
-                            <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
-                        ) #or_else
+                            #constraint_name,
+                        ) #or_else }
                     )
                 }
                 (Some(path), false) => {
@@ -1081,10 +1125,13 @@ impl<'a> FieldConfig<'a> {
                     )
                 }
                 (None, true) => {
-                    quote!(
+                    quote!({
+                        const #constraint_name : #crate_root::types::Constraints = #crate_root::types::Constraints::from_fixed_size(&<#ty as #crate_root::AsnType>::CONSTRAINTS.merge(
+                            #constraints
+                        ));
                         decoder.decode_extension_addition_with_constraints(
-                            <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
-                        ) #or_else
+                            #constraint_name,
+                        ) #or_else }
                     )
                 }
                 (None, false) => {

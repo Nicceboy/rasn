@@ -5,7 +5,6 @@ use heapless::LinearMap;
 use num_traits::ToPrimitive;
 
 use crate::{
-    oer::ranges,
     types::{
         fields::FieldPresence, Any, BitStr, BitString, BmpString, Choice, Constraints, Constructed,
         Date, Enumerated, GeneralString, GeneralizedTime, Ia5String, IntegerType, NumericString,
@@ -314,29 +313,27 @@ impl<'a, const FC: usize> Encoder<'a, FC> {
         value_to_enc: &I,
     ) -> Result<(), EncodeError> {
         if let Some(value) = constraints.value() {
-            if !value.constraint.0.in_bound(value_to_enc) && value.extensible.is_none() {
+            if !value.constraint.value.in_bound(value_to_enc) && value.extensible.is_none() {
                 return Err(EncodeError::value_constraint_not_satisfied(
                     value_to_enc.to_bigint().unwrap_or_default(),
-                    &value.constraint.0,
+                    &value.constraint.value,
                     self.codec(),
                 ));
             }
-            ranges::determine_integer_size_and_sign(
-                &value,
-                value_to_enc,
-                |value_to_enc, sign, octets| -> Result<(), EncodeError> {
-                    if let Some(octets) = octets {
-                        self.encode_constrained_integer_with_padding(
-                            usize::from(octets),
-                            value_to_enc,
-                            sign,
-                        )?;
-                    } else {
-                        self.encode_unconstrained_integer(value_to_enc, sign)?;
-                    }
-                    Ok(())
-                },
-            )?;
+            let (sign, octets) = if value.extensible.is_some() {
+                (true, None)
+            } else {
+                (value.constraint.get_sign(), value.constraint.get_range())
+            };
+            if let Some(octets) = octets {
+                self.encode_constrained_integer_with_padding(
+                    usize::from(octets),
+                    value_to_enc,
+                    sign,
+                )?;
+            } else {
+                self.encode_unconstrained_integer(value_to_enc, sign)?;
+            }
         } else {
             self.encode_unconstrained_integer(value_to_enc, true)?;
         }
@@ -1021,7 +1018,8 @@ mod tests {
 
     use super::*;
     use crate::prelude::{AsnType, Decode, Encode};
-    use crate::types::constraints::{Bounded, Constraint, Extensible, Value};
+    use crate::types::constraints::Constraints;
+    use crate::{constraints, value_constraint};
 
     #[test]
     fn test_encode_bool() {
@@ -1038,20 +1036,15 @@ mod tests {
     }
     #[test]
     fn test_encode_integer_manual_setup() {
-        let range_bound = Bounded::<i128>::Range {
-            start: 0.into(),
-            end: 255.into(),
-        };
-        let value_range = &[Constraint::Value(Extensible::new(Value::new(range_bound)))];
-        let consts = Constraints::new(value_range);
+        const CONSTRAINT_1: Constraints = constraints!(value_constraint!(0, 255));
         let mut encoder = Encoder::<0>::default();
-        let result = encoder.encode_integer_with_constraints(Tag::INTEGER, &consts, &244);
+        let result = encoder.encode_integer_with_constraints(Tag::INTEGER, &CONSTRAINT_1, &244);
         assert!(result.is_ok());
         let v = vec![244u8];
         assert_eq!(encoder.output.borrow().to_vec(), v);
         encoder.output.borrow_mut().clear();
         let value = BigInt::from(256);
-        let result = encoder.encode_integer_with_constraints(Tag::INTEGER, &consts, &value);
+        let result = encoder.encode_integer_with_constraints(Tag::INTEGER, &CONSTRAINT_1, &value);
         assert!(result.is_err());
     }
     #[test]

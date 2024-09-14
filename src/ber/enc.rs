@@ -378,7 +378,7 @@ impl crate::Encoder for Encoder {
         value: &E,
     ) -> Result<Self::Ok, Self::Error> {
         let value = E::discriminant(value);
-        self.encode_integer(tag, <_>::default(), &value)
+        self.encode_integer(tag, Constraints::default(), &value)
     }
 
     fn encode_integer<I: IntegerType>(
