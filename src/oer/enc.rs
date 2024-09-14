@@ -1,5 +1,6 @@
 use alloc::{borrow::Cow, vec::Vec};
 use bitvec::prelude::*;
+use bytes::{BufMut, BytesMut};
 use core::cell::RefCell;
 use heapless::LinearMap;
 use num_traits::ToPrimitive;
@@ -71,7 +72,7 @@ impl EncodingRules {
         matches!(self, Self::Oer)
     }
 }
-impl<const FC: usize> Default for Encoder<'_, FC> {
+impl<const FC: usize> Default for Encoder<FC> {
     fn default() -> Self {
         Self::new(EncoderOptions::coer(), 0)
     }
@@ -79,9 +80,10 @@ impl<const FC: usize> Default for Encoder<'_, FC> {
 
 /// COER encoder. A subset of OER to provide canonical and unique encoding.
 #[derive(Debug)]
-pub struct Encoder<'a, const FC: usize = 0> {
+pub struct Encoder<const FC: usize = 0> {
     options: EncoderOptions,
-    output: alloc::borrow::Cow<'a, RefCell<Vec<u8>>>,
+    // output: alloc::borrow::Cow<'a, RefCell<Vec<u8>>>,
+    output: BytesMut,
     set_output: alloc::collections::BTreeMap<Tag, Vec<u8>>,
     // usize a.k.a. field index defines the order for Sequence
     field_bitfield: LinearMap<(usize, Tag), (FieldPresence, bool), FC>,
@@ -106,12 +108,13 @@ pub struct Encoder<'a, const FC: usize = 0> {
 
 // Tags are encoded only as part of the encoding of a choice type, where the tag indicates
 // which alternative of the choice type is the chosen alternative (see 20.1).
-impl<'a, const FC: usize> Encoder<'a, FC> {
+impl<const FC: usize> Encoder<FC> {
     #[must_use]
     pub fn new(options: EncoderOptions, base_capacity: usize) -> Self {
         Self {
             options,
-            output: Cow::Owned(RefCell::new(Vec::with_capacity(base_capacity))),
+            // output: Cow::Owned(RefCell::new(Vec::with_capacity(base_capacity))),
+            output: BytesMut::with_capacity(base_capacity),
             set_output: <_>::default(),
             field_bitfield: LinearMap::<_, _, FC>::default(),
             current_field_index: <_>::default(),
@@ -120,10 +123,11 @@ impl<'a, const FC: usize> Encoder<'a, FC> {
             parent_output_length: <_>::default(),
         }
     }
-    pub fn from_buffer(options: EncoderOptions, output: &'a RefCell<Vec<u8>>) -> Self {
+    pub fn from_buffer(options: EncoderOptions, output: BytesMut) -> Self {
         Self {
             options,
-            output: Cow::Borrowed(output),
+            // output: Cow::Borrowed(output),
+            output,
             set_output: <_>::default(),
             field_bitfield: <_>::default(),
             current_field_index: <_>::default(),
@@ -138,16 +142,29 @@ impl<'a, const FC: usize> Encoder<'a, FC> {
 
     #[must_use]
     pub fn output(&self) -> Vec<u8> {
-        core::mem::take(&mut *self.output.borrow_mut())
+        self.output.to_vec()
     }
-    fn collect_set(&self) {
-        self.output.borrow_mut().append(
+    #[must_use]
+    pub fn bytes_output(&mut self) -> BytesMut {
+        self.options
+            .set_encoding
+            .then(|| {
+                self.set_output
+                    .values()
+                    .flatten()
+                    .copied()
+                    .collect::<BytesMut>()
+            })
+            .unwrap_or(self.output.split())
+    }
+    fn collect_set(&mut self) {
+        self.output.put_slice(
             self.set_output
                 .values()
                 .flatten()
                 .copied()
                 .collect::<Vec<u8>>()
-                .as_mut(),
+                .as_slice(),
         )
     }
     pub fn set_bit(&mut self, tag: Tag, bit: bool) {
@@ -169,7 +186,7 @@ impl<'a, const FC: usize> Encoder<'a, FC> {
         if self.options.set_encoding {
             // If not using mem::take here, remember to call output.clear() after encoding
             self.set_output
-                .insert(tag, core::mem::take(&mut self.output.borrow_mut()));
+                .insert(tag, core::mem::take(&mut self.output.to_vec()));
         }
         Ok(())
     }
@@ -216,7 +233,7 @@ impl<'a, const FC: usize> Encoder<'a, FC> {
             debug_assert!(&bv[2..8].all());
             debug_assert!(&bv[9..16].any());
         }
-        self.output.borrow_mut().extend(bv.as_raw_slice());
+        self.output.extend(bv.as_raw_slice());
     }
 
     fn encode_unconstrained_enum_index(&mut self, value: isize) -> Result<(), EncodeError> {
@@ -241,8 +258,8 @@ impl<'a, const FC: usize> Encoder<'a, FC> {
         // We must swap the first bit to show long form
         // It is always zero by default with u8 type when value being < 128
         length |= 0b_1000_0000;
-        self.output.borrow_mut().extend(&length.to_be_bytes());
-        self.output.borrow_mut().extend(&bytes.as_ref()[..needed]);
+        self.output.extend(&length.to_be_bytes());
+        self.output.extend(&bytes.as_ref()[..needed]);
         Ok(())
     }
     /// Encode the length of the value to output.
@@ -253,7 +270,7 @@ impl<'a, const FC: usize> Encoder<'a, FC> {
         let (bytes, needed) = length.to_unsigned_bytes_be();
         if length < 128 {
             // First bit should be always zero when below 128: ITU-T X.696 8.6.4
-            self.output.borrow_mut().extend(&bytes.as_ref()[..needed]);
+            self.output.extend(&bytes.as_ref()[..needed]);
             return Ok(());
         }
         let mut length_of_length = u8::try_from(needed).map_err(|err| {
@@ -271,10 +288,8 @@ impl<'a, const FC: usize> Encoder<'a, FC> {
         // We must swap the first bit to show long form
         // It is always zero by default with u8 type when value being < 128
         length_of_length |= 0b_1000_0000;
-        self.output
-            .borrow_mut()
-            .extend(&length_of_length.to_be_bytes());
-        self.output.borrow_mut().extend(&bytes.as_ref()[..needed]);
+        self.output.extend(&length_of_length.to_be_bytes());
+        self.output.extend(&bytes.as_ref()[..needed]);
         Ok(())
     }
     /// Encode integer `value_to_enc` with length determinant
@@ -288,11 +303,11 @@ impl<'a, const FC: usize> Encoder<'a, FC> {
         if signed {
             let (bytes, needed) = value_to_enc.to_signed_bytes_be();
             self.encode_length(needed)?;
-            self.output.borrow_mut().extend(&bytes.as_ref()[..needed]);
+            self.output.extend(&bytes.as_ref()[..needed]);
         } else {
             let (bytes, needed) = value_to_enc.to_unsigned_bytes_be();
             self.encode_length(needed)?;
-            self.output.borrow_mut().extend(&bytes.as_ref()[..needed]);
+            self.output.extend(&bytes.as_ref()[..needed]);
         };
         Ok(())
     }
@@ -371,11 +386,9 @@ impl<'a, const FC: usize> Encoder<'a, FC> {
                 if signed && value.is_negative() {
                     // 2's complement
                     self.output
-                        .borrow_mut()
                         .extend(core::iter::repeat(0xff).take(octets - needed));
                 } else {
                     self.output
-                        .borrow_mut()
                         .extend(core::iter::repeat(0x00).take(octets - needed));
                 }
             }
@@ -391,7 +404,7 @@ impl<'a, const FC: usize> Encoder<'a, FC> {
             // As is
             Ordering::Equal => {}
         };
-        self.output.borrow_mut().extend(&bytes[..needed]);
+        self.output.extend(&bytes[..needed]);
         Ok(())
     }
     fn check_fixed_size_constraint(
@@ -421,7 +434,7 @@ impl<'a, const FC: usize> Encoder<'a, FC> {
     }
 
     fn output_length(&self) -> usize {
-        let mut output_length = self.output.borrow().len();
+        let mut output_length = self.output.len();
         output_length += usize::from(self.is_extension_sequence);
         output_length += self
             .field_bitfield
@@ -485,7 +498,7 @@ impl<'a, const FC: usize> Encoder<'a, FC> {
             preamble.extend(missing);
         }
         debug_assert!(preamble.len() % 8 == 0);
-        self.output.borrow_mut().extend(preamble.as_raw_slice());
+        self.output.put_slice(preamble.as_raw_slice());
         // Section 16.3 ### Encodings of the components in the extension root ###
         // Must copy before move...
         let extension_fields = core::mem::take(&mut encoder.extension_fields);
@@ -493,7 +506,7 @@ impl<'a, const FC: usize> Encoder<'a, FC> {
             if encoder.options.set_encoding {
                 encoder.collect_set();
             }
-            self.output.borrow_mut().append(&mut encoder.output());
+            self.output.put_slice(encoder.output().as_slice());
         }
         if !extensions_defined || !extensions_present {
             self.extend(tag)?;
@@ -520,23 +533,21 @@ impl<'a, const FC: usize> Encoder<'a, FC> {
             extension_bitmap_buffer.extend(missing);
         }
         debug_assert!(extension_bitmap_buffer.len() % 8 == 0);
-        self.output
-            .borrow_mut()
-            .extend(extension_bitmap_buffer.as_raw_slice());
+        self.output.extend(extension_bitmap_buffer.as_raw_slice());
         // Section 16.5 # Encodings of the components in the extension addition group, as open type
         for field in extension_fields.iter().filter_map(Option::as_ref) {
             self.encode_length(field.len())?;
-            self.output.borrow_mut().extend(field);
+            self.output.extend(field);
         }
         self.extend(tag)?;
         Ok(())
     }
 }
 
-impl<'a, const FC: usize> crate::Encoder for Encoder<'a, FC> {
+impl<const FC: usize> crate::Encoder for Encoder<FC> {
     type Ok = ();
     type Error = EncodeError;
-    type AnyEncoder<const N: usize> = Encoder<'a, N>;
+    type AnyEncoder<const N: usize> = Encoder<N>;
 
     fn codec(&self) -> Codec {
         self.options.current_codec()
@@ -553,7 +564,6 @@ impl<'a, const FC: usize> crate::Encoder for Encoder<'a, FC> {
     fn encode_bool(&mut self, tag: Tag, value: bool) -> Result<Self::Ok, Self::Error> {
         self.set_bit(tag, true);
         self.output
-            .borrow_mut()
             .extend(if value { &[0xffu8] } else { &[0x00u8] });
         self.extend(tag)
     }
@@ -589,9 +599,7 @@ impl<'a, const FC: usize> crate::Encoder for Encoder<'a, FC> {
                     } else {
                         bit_string_encoding.extend(value);
                     }
-                    self.output
-                        .borrow_mut()
-                        .extend(bit_string_encoding.as_raw_slice());
+                    self.output.extend(bit_string_encoding.as_raw_slice());
                 } else {
                     return Err(EncodeError::size_constraint_not_satisfied(
                         value.len(),
@@ -607,7 +615,7 @@ impl<'a, const FC: usize> crate::Encoder for Encoder<'a, FC> {
         // If the BitString is empty, length is one and initial octet is zero
         if value.is_empty() {
             self.encode_length(1)?;
-            self.output.borrow_mut().extend(&[0x00u8]);
+            self.output.extend(&[0x00u8]);
         } else {
             // TODO 22.7 X.680, NamedBitString and COER
             // if self.options.encoding_rules.is_coer()
@@ -628,9 +636,7 @@ impl<'a, const FC: usize> crate::Encoder for Encoder<'a, FC> {
             bit_string_encoding.extend(value);
             bit_string_encoding.extend(trailing);
             self.encode_length(bit_string_encoding.len() / 8)?;
-            self.output
-                .borrow_mut()
-                .extend(bit_string_encoding.as_raw_slice());
+            self.output.extend(bit_string_encoding.as_raw_slice());
         }
         self.extend(tag)?;
         Ok(())
@@ -665,9 +671,9 @@ impl<'a, const FC: usize> crate::Encoder for Encoder<'a, FC> {
     ) -> Result<Self::Ok, Self::Error> {
         self.set_bit(tag, true);
         let mut enc = crate::ber::enc::Encoder::new(crate::ber::enc::EncoderOptions::ber());
-        let mut octets = enc.object_identifier_as_bytes(value)?;
+        let octets = enc.object_identifier_as_bytes(value)?;
         self.encode_length(octets.len())?;
-        self.output.borrow_mut().append(&mut octets);
+        self.output.put_slice(&octets);
         self.extend(tag)?;
         Ok(())
     }
@@ -695,11 +701,11 @@ impl<'a, const FC: usize> crate::Encoder for Encoder<'a, FC> {
     ) -> Result<Self::Ok, Self::Error> {
         self.set_bit(tag, true);
         if self.check_fixed_size_constraint(value.len(), &constraints)? {
-            self.output.borrow_mut().extend(value);
+            self.output.extend(value);
         } else {
             // Use length determinant on other cases
             self.encode_length(value.len())?;
-            self.output.borrow_mut().extend(value);
+            self.output.extend(value);
         }
         self.extend(tag)?;
         Ok(())
@@ -869,15 +875,15 @@ impl<'a, const FC: usize> crate::Encoder for Encoder<'a, FC> {
         // It seems that constraints here are not C/OER visible? No mention in standard...
         self.set_bit(tag, true);
         self.encode_unconstrained_integer(&value.len(), false)?;
-        self.output
-            .borrow_mut()
-            .reserve(core::mem::size_of_val(value));
-        let mut encoder = Encoder::<0>::from_buffer(self.options, &self.output);
+        self.output.reserve(core::mem::size_of_val(value));
+        let split = self.output.split();
+        let mut encoder = Encoder::<0>::from_buffer(self.options, split);
         {
             for one in value {
                 E::encode(one, &mut encoder)?;
             }
         }
+        self.output = encoder.bytes_output();
         self.extend(tag)?;
         Ok(())
     }
@@ -960,14 +966,10 @@ impl<'a, const FC: usize> crate::Encoder for Encoder<'a, FC> {
         let is_root_extension = crate::types::TagTree::tag_contains(&tag, E::VARIANTS);
         self.encode_tag(tag);
         if is_root_extension {
-            self.output
-                .borrow_mut()
-                .append(&mut choice_encoder.output());
+            self.output.put(choice_encoder.output().as_slice());
         } else {
-            self.encode_length(choice_encoder.output.borrow().len())?;
-            self.output
-                .borrow_mut()
-                .append(&mut choice_encoder.output());
+            self.encode_length(choice_encoder.output.len())?;
+            self.output.put(&mut choice_encoder.output().as_slice());
         }
         self.extend(tag)?;
         Ok(())
@@ -1059,8 +1061,8 @@ mod tests {
         let result = encoder.encode_integer_with_constraints(Tag::INTEGER, &consts, &244);
         assert!(result.is_ok());
         let v = vec![244u8];
-        assert_eq!(encoder.output.borrow().to_vec(), v);
-        encoder.output.borrow_mut().clear();
+        assert_eq!(encoder.output.to_vec(), v);
+        encoder.output.clear();
         let value = BigInt::from(256);
         let result = encoder.encode_integer_with_constraints(Tag::INTEGER, &consts, &value);
         assert!(result.is_err());
@@ -1074,8 +1076,8 @@ mod tests {
             encoder.encode_integer_with_constraints(Tag::INTEGER, &constraints, &BigInt::from(244));
         assert!(result.is_ok());
         let v = vec![2u8, 0, 244];
-        assert_eq!(encoder.output.borrow().to_vec(), v);
-        encoder.output.borrow_mut().clear();
+        assert_eq!(encoder.output.to_vec(), v);
+        encoder.output.clear();
         let result = encoder.encode_integer_with_constraints(
             Tag::INTEGER,
             &constraints,
@@ -1083,7 +1085,7 @@ mod tests {
         );
         assert!(result.is_ok());
         let v = vec![0x03u8, 0xED, 0x29, 0x79];
-        assert_eq!(encoder.output.borrow().to_vec(), v);
+        assert_eq!(encoder.output.to_vec(), v);
     }
     #[test]
     fn test_large_lengths() {
