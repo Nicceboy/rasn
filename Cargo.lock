@@ -825,7 +825,6 @@ dependencies = [
  "pretty_assertions",
  "rasn-compiler",
  "rasn-derive",
- "rasn-pkix",
  "serde_json",
  "snafu",
  "x509-parser",
