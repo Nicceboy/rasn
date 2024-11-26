@@ -3,7 +3,8 @@
 
 extern crate alloc;
 
-use rasn::{types::*, Decode, Encode};
+use alloc::string::{String, ToString};
+use rasn::prelude::*;
 
 /// ID value of a corresponding request [`LdapMessage`].
 ///
@@ -23,10 +24,67 @@ use rasn::{types::*, Decode, Encode};
 /// responses.
 pub type MessageId = u32;
 
-/// A notational convenience to indicate that, although strings of `LdapString`
-/// encode as [`OctetString`] types, the ISO10646 character set (a superset of
-/// Unicode) is used, encoded following the UTF-8 RFC3629 algorithm.
-pub type LdapString = OctetString;
+/// A notational convenience to indicate that, for `LdapString`, the
+/// ISO10646 character set (a superset of
+/// Unicode) is being used, encoded following the UTF-8 RFC3629 algorithm.
+///
+/// We can use Rust `String` type to represent this type, see
+/// <https://github.com/librasn/rasn/issues/304> and <https://www.unicode.org/faq/unicode_iso.html>
+#[derive(AsnType, Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[rasn(tag(universal, 4))]
+pub struct LdapString(pub String);
+
+impl core::ops::Deref for LdapString {
+    type Target = String;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl core::ops::DerefMut for LdapString {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+impl From<String> for LdapString {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+impl From<&str> for LdapString {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+#[allow(clippy::mutable_key_type)]
+impl rasn::Encode for LdapString {
+    fn encode_with_tag_and_constraints<'encoder, EN: rasn::Encoder<'encoder>>(
+        &self,
+        encoder: &mut EN,
+        tag: rasn::types::Tag,
+        constraints: rasn::types::Constraints,
+    ) -> core::result::Result<(), EN::Error> {
+        encoder.encode_octet_string(tag, constraints, self.0.as_bytes())?;
+        Ok(())
+    }
+}
+impl rasn::Decode for LdapString {
+    fn decode_with_tag_and_constraints<D: rasn::Decoder>(
+        decoder: &mut D,
+        tag: rasn::types::Tag,
+        constraints: rasn::types::Constraints,
+    ) -> core::result::Result<Self, D::Error> {
+        String::from_utf8(decoder.decode_octet_string(tag, constraints)?)
+            .map_err(|error| {
+                rasn::de::Error::custom(
+                    alloc::format!("LdapString not valid UTF-8: {error}"),
+                    decoder.codec(),
+                )
+            })
+            .map(Self::from)
+    }
+}
 
 /// A notational convenience to indicate that the permitted value of this string
 /// is a (UTF-8 encoded) dotted-decimal representation of an `ObjectIdentifier`.
@@ -38,7 +96,9 @@ pub type LdapDn = LdapString;
 pub type RelativeLdapDn = LdapString;
 /// An attribute type and zero or more options.
 pub type AttributeDescription = LdapString;
-/// An encoded attribute value. The attribute value is encoded according to the
+/// An encoded attribute value. T
+///
+/// he attribute value is encoded according to the
 /// LDAP-specific encoding definition of its corresponding syntax.  The
 /// LDAP-specific encoding definitions for different syntaxes and attribute
 /// types may be found in other documents and in particular [RFC 4517].
@@ -60,7 +120,7 @@ pub type PartialAttributeList = SequenceOf<PartialAttribute>;
 pub type AttributeList = SequenceOf<Attribute>;
 
 /// The envelope for all LDAP operations.
-#[derive(AsnType, Encode, Decode, Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[derive(AsnType, Encode, Decode, Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct LdapMessage {
     pub message_id: MessageId,
@@ -81,7 +141,7 @@ impl LdapMessage {
 }
 
 /// The kind of operation in the [`LdapMessage`].
-#[derive(AsnType, Encode, Decode, Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[derive(AsnType, Encode, Decode, Debug, Clone, PartialEq, Eq, Hash)]
 #[rasn(choice)]
 #[non_exhaustive]
 pub enum ProtocolOp {
@@ -125,7 +185,7 @@ impl AttributeValueAssertion {
     }
 }
 
-#[derive(AsnType, Encode, Decode, Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[derive(AsnType, Encode, Decode, Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct PartialAttribute {
     pub r#type: AttributeDescription,
@@ -139,7 +199,7 @@ impl PartialAttribute {
     }
 }
 
-#[derive(AsnType, Encode, Decode, Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[derive(AsnType, Encode, Decode, Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct Attribute {
     pub r#type: AttributeDescription,
@@ -367,10 +427,11 @@ impl BindResponse {
 pub struct UnbindRequest;
 
 /// Used to request a server to return, subject to access controls and other
-/// restrictions, a set of entries matching a complex search criterion. This can
-/// be used to read attributes from a single entry, from entries immediately
+/// restrictions, a set of entries matching a complex search criterion.
+///
+/// This can be used to read attributes from a single entry, from entries immediately
 /// subordinate to a particular entry, or from a whole subtree of entries.
-#[derive(AsnType, Encode, Decode, Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[derive(AsnType, Encode, Decode, Debug, Clone, PartialEq, Eq, Hash)]
 #[rasn(tag(application, 3))]
 #[non_exhaustive]
 pub struct SearchRequest {
@@ -492,7 +553,7 @@ pub enum SearchRequestDerefAliases {
 
 /// Defines the conditions that must be fulfilled in order for the search to
 /// match a given entry.
-#[derive(AsnType, Encode, Decode, Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[derive(AsnType, Encode, Decode, Debug, Clone, PartialEq, Eq, Hash)]
 #[rasn(choice)]
 #[non_exhaustive]
 pub enum Filter {
@@ -635,7 +696,7 @@ impl MatchingRuleAssertion {
 }
 
 /// An entry found during the search.
-#[derive(AsnType, Encode, Decode, Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[derive(AsnType, Encode, Decode, Debug, Clone, PartialEq, Eq, Hash)]
 #[rasn(tag(application, 4))]
 #[non_exhaustive]
 pub struct SearchResultEntry {
@@ -669,7 +730,7 @@ pub struct SearchResultDone(pub LdapResult);
 
 /// Allows a client to request that a modification of an entry be performed on
 /// its behalf by a server.
-#[derive(AsnType, Encode, Decode, Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[derive(AsnType, Encode, Decode, Debug, Clone, PartialEq, Eq, Hash)]
 #[rasn(tag(application, 6))]
 pub struct ModifyRequest {
     /// The name of the entry to be modified.
@@ -686,7 +747,7 @@ pub struct ModifyRequest {
 }
 
 /// Modifications to be performed on an LDAP entry.
-#[derive(AsnType, Encode, Decode, Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[derive(AsnType, Encode, Decode, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ModifyRequestChanges {
     /// The type of modification being performed.
     pub operation: ChangeOperation,
@@ -727,7 +788,7 @@ pub enum ChangeOperation {
 pub struct ModifyResponse(pub LdapResult);
 
 /// Allows a client to request the addition of LDAP an entry into the directory.
-#[derive(AsnType, Encode, Decode, Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[derive(AsnType, Encode, Decode, Debug, Clone, PartialEq, Eq, Hash)]
 #[rasn(tag(application, 8))]
 pub struct AddRequest {
     /// The name of the entry to be added.
@@ -909,4 +970,22 @@ pub struct IntermediateResponse {
     /// Information specific to the extended operation.
     #[rasn(tag(1))]
     pub response_value: Option<OctetString>,
+}
+
+mod tests {
+
+    #[test]
+    fn test_ldpa_string() {
+        use super::{LdapString, ToString};
+        let ldap_string = LdapString("test".to_string());
+        let ldap_string2 = LdapString("test".into());
+        assert_eq!(ldap_string, ldap_string2);
+        let encoded = rasn::ber::encode(&ldap_string).unwrap();
+        assert_eq!(encoded, alloc::vec![0x04, 0x04, 0x74, 0x65, 0x73, 0x74]);
+        let decoded: LdapString = rasn::ber::decode(&encoded).unwrap();
+        assert_eq!(ldap_string, decoded);
+        let invalid_utf8: &[u8] = &[0x04, 0x04, 0x80, 0xC0, 0xF5, 0xFF];
+        let decoded = rasn::ber::decode::<LdapString>(invalid_utf8);
+        assert!(decoded.is_err());
+    }
 }

@@ -1,15 +1,15 @@
 use chrono::TimeZone;
 use pretty_assertions::assert_eq;
-use rasn::types::*;
+use rasn::prelude::*;
 use rasn_pkix::*;
 
 #[test]
 fn it_works() {
     let contents = pem::parse(include_bytes!("data/DigiCertAssuredIDTLSCA.crt.pem")).unwrap();
 
-    let cert: rasn_pkix::Certificate = rasn::der::decode(&contents.contents).unwrap();
+    let cert: rasn_pkix::Certificate = rasn::der::decode(contents.contents()).unwrap();
 
-    assert_eq!(contents.contents, rasn::der::encode(&cert).unwrap());
+    assert_eq!(contents.contents(), rasn::der::encode(&cert).unwrap());
 }
 
 #[test]
@@ -22,9 +22,9 @@ fn extensions() {
             _i: Integer,
         }
 
-        encoder.encode_sequence::<Sequence, _>(Tag::SEQUENCE, |encoder| {
+        encoder.encode_sequence::<2, 0, Sequence, _>(Tag::SEQUENCE, |encoder| {
             encoder.encode_bool(Tag::BOOL, true)?;
-            encoder.encode_integer(Tag::INTEGER, <_>::default(), &0u32.into())?;
+            encoder.encode_integer::<u32>(Tag::INTEGER, Constraints::default(), &0u32)?;
             Ok(())
         })?;
 
@@ -109,12 +109,12 @@ fn lets_encrypt_x3() {
             validity: Validity {
                 not_before: Time::Utc(
                     chrono::Utc
-                        .with_ymd_and_hms(2016, 03, 17, 16, 40, 46)
+                        .with_ymd_and_hms(2016, 3, 17, 16, 40, 46)
                         .unwrap(),
                 ),
                 not_after: Time::Utc(
                     chrono::Utc
-                        .with_ymd_and_hms(2021, 03, 17, 16, 40, 46)
+                        .with_ymd_and_hms(2021, 3, 17, 16, 40, 46)
                         .unwrap(),
                 ),
             },

@@ -1,9 +1,10 @@
 //! Generic ASN.1 decoding framework.
 
 use alloc::{boxed::Box, vec::Vec};
+use num_bigint::BigInt;
 
 use crate::error::DecodeError;
-use crate::types::{self, AsnType, Constraints, Enumerated, Tag};
+use crate::types::{self, AsnType, Constraints, Enumerated, SetOf, Tag};
 
 pub use nom::Needed;
 pub use rasn_derive::Decode;
@@ -13,8 +14,8 @@ pub trait Decode: Sized + AsnType {
     /// Decode this value from a given ASN.1 decoder.
     ///
     /// **Note for implementors** You typically do not need to implement this.
-    /// The default implementation will call `Decode::decode_with_tag` with
-    /// your types associated `AsnType::TAG`. You should only ever need to
+    /// The default implementation will call [`Decode::decode_with_tag_and_constraints`] with
+    /// your types associated [`AsnType::TAG`]. You should only ever need to
     /// implement this if you have a type that *cannot* be implicitly tagged,
     /// such as a `CHOICE` type, which case you want to implement the decoding
     /// in `decode`.
@@ -31,6 +32,12 @@ pub trait Decode: Sized + AsnType {
         Self::decode_with_tag_and_constraints(decoder, tag, Self::CONSTRAINTS)
     }
 
+    /// Decode this value from a given ASN.1 decoder with a set of constraints
+    /// on what values of that type are allowed.
+    ///
+    /// **Note for implementors** You typically do not need to implement this.
+    /// The default implementation will call [`Decode::decode_with_tag_and_constraints`] with
+    /// your types associated [`AsnType::TAG`] and [`AsnType::CONSTRAINTS`].
     fn decode_with_constraints<D: Decoder>(
         decoder: &mut D,
         constraints: Constraints,
@@ -38,6 +45,12 @@ pub trait Decode: Sized + AsnType {
         Self::decode_with_tag_and_constraints(decoder, Self::TAG, constraints)
     }
 
+    /// Decode this value implicitly tagged with `tag` from a given ASN.1
+    /// decoder with a set of constraints on what values of that type are allowed.
+    ///
+    /// **Note** For `CHOICE` and other types that cannot be implicitly tagged
+    /// this will **explicitly tag** the value, for all other types, it will
+    /// **implicitly** tag the value.
     fn decode_with_tag_and_constraints<D: Decoder>(
         decoder: &mut D,
         tag: Tag,
@@ -46,16 +59,23 @@ pub trait Decode: Sized + AsnType {
 }
 
 /// A **data format** decode any ASN.1 data type.
-pub trait Decoder: Sized {
-    // TODO, when associated type defaults are stabilized, use this instead?
-    // type Error = crate::error::DecodeError;
+///
+/// Const `RCL` is the count of root components in the root component list of a sequence or set.
+/// Const `ECL` is the count of extension additions in the extension addition component type list in a sequence or set.
+pub trait Decoder<const RCL: usize = 0, const ECL: usize = 0>: Sized {
+    /// The associated success type returned on success.
+    type Ok;
+    /// The associated error type returned on failure.
     type Error: Error + Into<crate::error::DecodeError> + From<crate::error::DecodeError>;
+    /// Helper type for decoding nested instances of `Decoder` with different fields.
+    type AnyDecoder<const R: usize, const E: usize>: Decoder<RCL, ECL, Ok = Self::Ok, Error = Self::Error>
+        + Decoder;
 
     /// Returns codec variant of `Codec` that current decoder is decoding.
     #[must_use]
     fn codec(&self) -> crate::Codec;
 
-    /// Decode a unknown ASN.1 value identified by `tag` from the available input.
+    /// Decode an unknown ASN.1 value identified by `tag` from the available input.
     fn decode_any(&mut self) -> Result<types::Any, Self::Error>;
     /// Decode a `BIT STRING` identified by `tag` from the available input.
     fn decode_bit_string(
@@ -82,16 +102,23 @@ pub trait Decoder: Sized {
     ) -> Result<types::ObjectIdentifier, Self::Error>;
     /// Decode a `SEQUENCE` identified by `tag` from the available input. Returning
     /// a new `Decoder` containing the sequence's contents to be decoded.
-    fn decode_sequence<D, DF, F>(
+    ///
+    /// Const `RC` is the count of root components in a sequence.
+    /// Const `EC` is the count of extension addition components in a sequence.
+    /// Generic `D` is the sequence type.
+    /// Generic `DF` is the closure that will initialize the sequence with default values, typically when no values are present.
+    /// Generic `F` is the closure that will decode the sequence by decoding the fields in the order as defined in the type.
+    /// NOTE: If you implement this manually, make sure to decode fields in the same order and pass the correct count of fields.
+    fn decode_sequence<const RC: usize, const EC: usize, D, DF, F>(
         &mut self,
         tag: Tag,
         default_initializer_fn: Option<DF>,
         decode_fn: F,
     ) -> Result<D, Self::Error>
     where
-        D: crate::types::Constructed,
+        D: crate::types::Constructed<RC, EC>,
         DF: FnOnce() -> D,
-        F: FnOnce(&mut Self) -> Result<D, Self::Error>;
+        F: FnOnce(&mut Self::AnyDecoder<RC, EC>) -> Result<D, Self::Error>;
     /// Decode a `SEQUENCE OF D` where `D: Decode` identified by `tag` from the available input.
     fn decode_sequence_of<D: Decode>(
         &mut self,
@@ -99,17 +126,20 @@ pub trait Decoder: Sized {
         constraints: Constraints,
     ) -> Result<Vec<D>, Self::Error>;
     /// Decode a `SET OF D` where `D: Decode` identified by `tag` from the available input.
-    fn decode_set_of<D: Decode + Ord>(
+    fn decode_set_of<D: Decode + Eq + core::hash::Hash>(
         &mut self,
         tag: Tag,
         constraints: Constraints,
     ) -> Result<types::SetOf<D>, Self::Error>;
     /// Decode a `OCTET STRING` identified by `tag` from the available input.
-    fn decode_octet_string(
-        &mut self,
+    fn decode_octet_string<'buf, T>(
+        &'buf mut self,
         tag: Tag,
         constraints: Constraints,
-    ) -> Result<Vec<u8>, Self::Error>;
+    ) -> Result<T, Self::Error>
+    where
+        T: From<&'buf [u8]> + From<Vec<u8>>;
+
     /// Decode a `UTF8 STRING` identified by `tag` from the available input.
     fn decode_utf8_string(
         &mut self,
@@ -168,10 +198,17 @@ pub trait Decoder: Sized {
 
     /// Decode an ASN.1 value that has been explicitly prefixed with `tag` from the available input.
     fn decode_explicit_prefix<D: Decode>(&mut self, tag: Tag) -> Result<D, Self::Error>;
+    /// Decode an optional ASN.1 type that has been explicitly prefixed with `tag` from the available input.
+    fn decode_optional_with_explicit_prefix<D: Decode>(
+        &mut self,
+        tag: Tag,
+    ) -> Result<Option<D>, Self::Error>;
     /// Decode a `UtcTime` identified by `tag` from the available input.
     fn decode_utc_time(&mut self, tag: Tag) -> Result<types::UtcTime, Self::Error>;
     /// Decode a `GeneralizedTime` identified by `tag` from the available input.
     fn decode_generalized_time(&mut self, tag: Tag) -> Result<types::GeneralizedTime, Self::Error>;
+    /// Decode a 'DATE' identified by 'tag' from the available input
+    fn decode_date(&mut self, tag: Tag) -> Result<types::Date, Self::Error>;
 
     /// Decode a `SET` identified by `tag` from the available input. Decoding
     /// `SET`s works a little different than other methods, as you need to
@@ -179,16 +216,23 @@ pub trait Decoder: Sized {
     /// and `FIELDS` must represent a `CHOICE` with a variant for each field
     /// from `SET`. As with `SET`s the field order is not guarenteed, so you'll
     /// have map from `Vec<FIELDS>` to `SET` in `decode_operation`.
-    fn decode_set<FIELDS, SET, D, F>(
+    ///
+    /// Const `RC` is the count of root components in a sequence.
+    /// Const `EC` is the count of extension addition components in a sequence.
+    /// Generic `FIELDS` is the choice type, used by `F` to map the decoded field values correctly.
+    /// Generic `SET` is the set type.
+    /// Generic `D` is the closure that will decode the set by decoding the fields in the order as defined in the type.
+    /// Generic `F` is the closure that will map the `FIELDS` to the set.
+    fn decode_set<const RC: usize, const EC: usize, FIELDS, SET, D, F>(
         &mut self,
         tag: Tag,
         decode_fn: D,
         field_fn: F,
     ) -> Result<SET, Self::Error>
     where
-        SET: Decode + crate::types::Constructed,
+        SET: Decode + crate::types::Constructed<RC, EC>,
         FIELDS: Decode,
-        D: Fn(&mut Self, usize, Tag) -> Result<FIELDS, Self::Error>,
+        D: Fn(&mut Self::AnyDecoder<RC, EC>, usize, Tag) -> Result<FIELDS, Self::Error>,
         F: FnOnce(Vec<FIELDS>) -> Result<SET, Self::Error>;
 
     /// Decode an the optional value in a `SEQUENCE` or `SET`.
@@ -260,12 +304,47 @@ pub trait Decoder: Sized {
             .unwrap_or_else(default_fn))
     }
 
+    /// Decode an extension addition value in a `SEQUENCE` or `SET`.
     fn decode_extension_addition<D>(&mut self) -> Result<Option<D>, Self::Error>
     where
         D: Decode,
     {
         self.decode_extension_addition_with_constraints(Constraints::default())
     }
+    /// Decode an extension addition with explicit tag in a `SEQUENCE` or `SET`.
+    fn decode_extension_addition_with_explicit_tag_and_constraints<D>(
+        &mut self,
+        tag: Tag,
+        constraints: Constraints,
+    ) -> Result<Option<D>, Self::Error>
+    where
+        D: Decode;
+
+    /// Decode an extension addition value with tag in a `SEQUENCE` or `SET`.
+    fn decode_extension_addition_with_tag<D>(&mut self, tag: Tag) -> Result<Option<D>, Self::Error>
+    where
+        D: Decode,
+    {
+        self.decode_extension_addition_with_tag_and_constraints(tag, Constraints::default())
+    }
+    /// Decode an extension addition with constraints in a `SEQUENCE` or `SET`
+    fn decode_extension_addition_with_constraints<D>(
+        &mut self,
+        constraints: Constraints,
+    ) -> Result<Option<D>, Self::Error>
+    where
+        D: Decode,
+    {
+        self.decode_extension_addition_with_tag_and_constraints(D::TAG, constraints)
+    }
+    /// Decode a extension addition value with tag and constraints in a `SEQUENCE` or `SET`.
+    fn decode_extension_addition_with_tag_and_constraints<D>(
+        &mut self,
+        tag: Tag,
+        constraints: Constraints,
+    ) -> Result<Option<D>, Self::Error>
+    where
+        D: Decode;
 
     /// Decode a `DEFAULT` value in a `SEQUENCE`'s or `SET`'s extension
     fn decode_extension_addition_with_default<D: Decode, F: FnOnce() -> D>(
@@ -273,6 +352,18 @@ pub trait Decoder: Sized {
         default_fn: F,
     ) -> Result<D, Self::Error> {
         self.decode_extension_addition_with_default_and_constraints(
+            default_fn,
+            Constraints::default(),
+        )
+    }
+    /// Decode a `DEFAULT` value with tag in a `SEQUENCE`'s or `SET`'s extension
+    fn decode_extension_addition_with_default_and_tag<D: Decode, F: FnOnce() -> D>(
+        &mut self,
+        tag: Tag,
+        default_fn: F,
+    ) -> Result<D, Self::Error> {
+        self.decode_extension_addition_with_default_and_tag_and_constraints::<D, F>(
+            tag,
             default_fn,
             Constraints::default(),
         )
@@ -288,16 +379,31 @@ pub trait Decoder: Sized {
             .decode_extension_addition_with_constraints::<D>(constraints)?
             .unwrap_or_else(default_fn))
     }
-
-    /// Decode an extension addition with constraints in a `SEQUENCE` or `SET`
-    fn decode_extension_addition_with_constraints<D>(
+    /// Decode a `DEFAULT` value with tag and constraints in a `SEQUENCE`'s or `SET`'s extension
+    fn decode_extension_addition_with_default_and_tag_and_constraints<
+        D: Decode,
+        F: FnOnce() -> D,
+    >(
         &mut self,
+        tag: Tag,
+        default_fn: F,
         constraints: Constraints,
-    ) -> Result<Option<D>, Self::Error>
-    where
-        D: Decode;
+    ) -> Result<D, Self::Error> {
+        Ok(self
+            .decode_extension_addition_with_tag_and_constraints::<D>(tag, constraints)?
+            .unwrap_or_else(default_fn))
+    }
 
-    fn decode_extension_addition_group<D: Decode + crate::types::Constructed>(
+    /// Decode a extension addition group in a `SEQUENCE` or `SET`.
+    ///
+    /// Const `RC` is the count of root components in a sequence.
+    /// Const `EC` is the count of extension addition components in a sequence.
+    /// Generic `D` is the type of the extension addition group.
+    fn decode_extension_addition_group<
+        const RC: usize,
+        const EC: usize,
+        D: Decode + crate::types::Constructed<RC, EC>,
+    >(
         &mut self,
     ) -> Result<Option<D>, Self::Error>;
 }
@@ -394,12 +500,16 @@ impl_integers! {
     i16,
     i32,
     i64,
+    i128,
     isize,
     u8,
     u16,
     u32,
     u64,
+    // TODO cannot support u128 as it is constrained type by default and current constraints uses i128 for bounds
+    // u128,
     usize,
+    BigInt
 }
 
 impl<const START: i128, const END: i128> Decode for types::ConstrainedInteger<START, END> {
@@ -420,7 +530,7 @@ impl Decode for types::Integer {
         tag: Tag,
         constraints: Constraints,
     ) -> Result<Self, D::Error> {
-        decoder.decode_integer(tag, constraints)
+        decoder.decode_integer::<types::Integer>(tag, constraints)
     }
 }
 
@@ -456,8 +566,8 @@ impl Decode for types::OctetString {
         constraints: Constraints,
     ) -> Result<Self, D::Error> {
         decoder
-            .decode_octet_string(tag, constraints)
-            .map(Self::from)
+            .decode_octet_string::<Vec<u8>>(tag, constraints)
+            .map(Into::into)
     }
 }
 
@@ -521,7 +631,7 @@ impl<T: Decode> Decode for alloc::vec::Vec<T> {
     }
 }
 
-impl<T: Decode + Ord> Decode for alloc::collections::BTreeSet<T> {
+impl<T: Decode + Eq + core::hash::Hash> Decode for SetOf<T> {
     fn decode_with_tag_and_constraints<D: Decoder>(
         decoder: &mut D,
         tag: Tag,

@@ -19,8 +19,8 @@ impl Enum {
             || {
                 self.config
                     .enumerated
-                    .then(|| quote!(#crate_root::Tag::ENUMERATED))
-                    .unwrap_or(quote!(#crate_root::Tag::EOC))
+                    .then(|| quote!(#crate_root::types::Tag::ENUMERATED))
+                    .unwrap_or(quote!(#crate_root::types::Tag::EOC))
             },
             |t| t.to_tokens(crate_root),
         );
@@ -39,14 +39,14 @@ impl Enum {
 
             quote! {
                 {
-                    const VARIANT_LIST: &'static [#crate_root::TagTree] = &[#(#field_tags),*];
-                    const VARIANT_TAG_TREE: #crate_root::TagTree = #crate_root::TagTree::Choice(VARIANT_LIST);
+                    const VARIANT_LIST: &'static [#crate_root::types::TagTree] = &[#(#field_tags),*];
+                    const VARIANT_TAG_TREE: #crate_root::types::TagTree = #crate_root::types::TagTree::Choice(VARIANT_LIST);
                     const _: () = assert!(VARIANT_TAG_TREE.is_unique(), #error_message);
                     VARIANT_TAG_TREE
                 }
             }
         } else {
-            quote!(#crate_root::TagTree::Leaf(#tag))
+            quote!(#crate_root::types::TagTree::Leaf(#tag))
         };
 
         let name = &self.name;
@@ -91,11 +91,32 @@ impl Enum {
             .then(|| quote!(Some(&[#(#extended_variants),*])))
             .unwrap_or(quote!(None));
 
+        // Check count of the root components in the choice
+        // https://github.com/XAMPPRocky/rasn/issues/168
+        // Choice index starts from zero, so we need to reduce variance by one
+        let variant_count = if self.variants.is_empty() {
+            0
+        } else {
+            self.variants.len() - 1
+        };
+
+        let variance_constraint = Constraints {
+            extensible: false,
+            from: None,
+            size: None,
+            value: Some(Constraint::from(Value::Range(
+                Some(0),
+                Some(variant_count as i128),
+            ))),
+        }
+        .const_expr(crate_root);
+
         let choice_impl = self.config.choice.then(|| quote! {
             impl #impl_generics #crate_root::types::Choice for #name #ty_generics #where_clause {
                 const VARIANTS: &'static [#crate_root::types::TagTree] = &[
                     #(#base_variants),*
                 ];
+                const VARIANCE_CONSTRAINT: #crate_root::types::Constraints = #variance_constraint;
                 const EXTENDED_VARIANTS: Option<&'static [#crate_root::types::TagTree]> = #extended_const_variants;
                 const IDENTIFIERS: &'static [&'static str] = &[
                     #(#identifiers),*
@@ -150,12 +171,12 @@ impl Enum {
 
         quote! {
             impl #impl_generics #crate_root::AsnType for #name #ty_generics #where_clause {
-                const TAG: #crate_root::Tag = {
+                const TAG: #crate_root::types::Tag = {
                     #tag
                 };
-                const TAG_TREE: #crate_root::TagTree = {
-                    const LIST: &'static [#crate_root::TagTree] = &[#tag_tree];
-                    const TAG_TREE: #crate_root::TagTree = #crate_root::TagTree::Choice(LIST);
+                const TAG_TREE: #crate_root::types::TagTree = {
+                    const LIST: &'static [#crate_root::types::TagTree] = &[#tag_tree];
+                    const TAG_TREE: #crate_root::types::TagTree = #crate_root::types::TagTree::Choice(LIST);
                     const _: () = assert!(TAG_TREE.is_unique(), #error_message);
                     #return_val
                 };
@@ -275,7 +296,7 @@ impl Enum {
             quote! {
                 #[automatically_derived]
                 impl #impl_generics #crate_root::types::DecodeChoice for #name #ty_generics #where_clause {
-                    fn from_tag<D: #crate_root::Decoder>(decoder: &mut D, tag: #crate_root::Tag) -> core::result::Result<Self, D::Error> {
+                    fn from_tag<D: #crate_root::Decoder>(decoder: &mut D, tag: #crate_root::types::Tag) -> core::result::Result<Self, D::Error> {
                         use #crate_root::de::Decode;
                         #from_tag
                     }
@@ -288,7 +309,7 @@ impl Enum {
 
             #[automatically_derived]
             impl #impl_generics #crate_root::Decode for #name #ty_generics #where_clause {
-                fn decode_with_tag_and_constraints<'constraints, D: #crate_root::Decoder>(decoder: &mut D, tag: #crate_root::Tag, constraints: #crate_root::types::Constraints<'constraints>) -> core::result::Result<Self, D::Error> {
+                fn decode_with_tag_and_constraints<D: #crate_root::Decoder>(decoder: &mut D, tag: #crate_root::types::Tag, constraints: #crate_root::types::Constraints) -> core::result::Result<Self, D::Error> {
                     #decode_with_tag
                 }
 
@@ -310,7 +331,7 @@ impl Enum {
         };
 
         quote! {
-            fn encode_with_tag_and_constraints<'constraints, EN: #crate_root::Encoder>(&self, encoder: &mut EN, tag: #crate_root::Tag, constraints: #crate_root::types::Constraints<'constraints>) -> core::result::Result<(), EN::Error> {
+            fn encode_with_tag_and_constraints<'encoder, EN: #crate_root::Encoder<'encoder>>(&self, encoder: &mut EN, tag: #crate_root::types::Tag, constraints: #crate_root::types::Constraints) -> core::result::Result<(), EN::Error> {
                 #operation
             }
         }
@@ -341,7 +362,7 @@ impl Enum {
                 syn::Fields::Unit => quote!(#name::#ident => #tag_tokens),
             }
         });
-
+        let mut variant_constraints: Vec<proc_macro2::TokenStream> = vec![];
         let variants = self.variants.iter().enumerate().map(|(i, v)| {
             let ident = &v.ident;
             let name = &self.name;
@@ -377,17 +398,24 @@ impl Enum {
                     let constraints = variant_config
                         .constraints
                         .const_expr(&self.config.crate_root);
+                    let constraint_name = format_ident!("VARIANT_CONSTRAINT_{}", i);
                     let variant_tag = variant_tag.to_tokens(crate_root);
                     let encode_operation = if variant_config.has_explicit_tag() {
                         quote!(encoder.encode_explicit_prefix(#variant_tag, value))
                     } else if variant_config.tag.is_some() || self.config.automatic_tags {
                         if let Some(constraints) = constraints {
-                            quote!(#crate_root::Encode::encode_with_tag_and_constraints(value, encoder, #variant_tag, #constraints))
+                            variant_constraints.push(quote! {
+                                const #constraint_name: #crate_root::types::constraints::Constraints = #constraints;
+                            });
+                            quote!(#crate_root::Encode::encode_with_tag_and_constraints(value, encoder, #variant_tag, #constraint_name))
                         } else {
                             quote!(#crate_root::Encode::encode_with_tag(value, encoder, #variant_tag))
                         }
                     } else if let Some(constraints) = constraints {
-                            quote!(#crate_root::Encode::encode_with_constraints(value, encoder, #constraints))
+                            variant_constraints.push(quote! {
+                                const #constraint_name: #crate_root::types::constraints::Constraints = #constraints;
+                            });
+                            quote!(#crate_root::Encode::encode_with_constraints(value, encoder, #constraint_name))
                         } else {
                             quote!(#crate_root::Encode::encode(value, encoder))
                     };
@@ -430,7 +458,7 @@ impl Enum {
 
             inner_generics
                 .params
-                .push(syn::LifetimeDef::new(encode_lifetime.clone()).into());
+                .push(syn::LifetimeParam::new(encode_lifetime.clone()).into());
 
             let variants = self
                 .variants
@@ -489,7 +517,8 @@ impl Enum {
         };
 
         quote! {
-            fn encode<E: #crate_root::Encoder>(&self, encoder: &mut E) -> core::result::Result<(), E::Error> {
+            fn encode<'encoder, E: #crate_root::Encoder<'encoder>>(&self, encoder: &mut E) -> core::result::Result<(), E::Error> {
+                #(#variant_constraints)*
                 #encode_impl.map(drop)
             }
         }

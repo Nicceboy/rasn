@@ -1,127 +1,29 @@
 #![doc = include_str!("../README.md")]
 #![cfg_attr(not(test), no_std)]
+#![warn(missing_docs)]
 
 extern crate alloc;
 
-#[macro_export]
-#[cfg(test)]
-macro_rules! round_trip {
-    ($codec:ident, $typ:ty, $value:expr, $expected:expr) => {{
-        let value: $typ = $value;
-        let expected: &[u8] = $expected;
-        let result = crate::$codec::encode(&value);
-        let actual_encoding = match result {
-            Ok(actual_encoding) => {
-                pretty_assertions::assert_eq!(expected, &*actual_encoding);
-                actual_encoding
-            }
-            Err(error) => {
-                panic!("Unexpected encoding error: {:?}", error);
-            }
-        };
-        let decoded_value: $typ = crate::$codec::decode(&actual_encoding).unwrap();
-        pretty_assertions::assert_eq!(value, decoded_value);
-    }};
-}
-#[cfg(test)]
-macro_rules! encode_error {
-    ($codec:ident, $typ:ty, $value:expr) => {{
-        let value: $typ = $value;
-        let result = crate::$codec::encode(&value);
-        match result {
-            Ok(actual_encoding) => {
-                panic!(
-                    "Expected an encoding error but got a valid encoding: {:?}",
-                    &*actual_encoding
-                );
-            }
-            Err(_) => {
-                // Expected an encoding error, so we're good!
-            }
-        }
-    }};
-}
-#[cfg(test)]
-macro_rules! decode_error {
-    ($codec:ident, $typ:ty, $value:expr) => {{
-        match crate::$codec::decode::<$typ>($value) {
-            Ok(_) => {
-                panic!("Unexpected decoding success!");
-            }
-            Err(_) => {
-                // Expected a decoding error, so we're good!
-            }
-        }
-    }};
-}
-#[cfg(test)]
-macro_rules! decode_ok {
-    ($codec:ident, $typ:ty, $value:expr, $expected:expr) => {{
-        match crate::$codec::decode::<$typ>($value) {
-            Ok(result) => {
-                pretty_assertions::assert_eq!(result, $expected);
-            }
-            Err(e) => {
-                panic!("Unexpected decoding failure!: {e}");
-            }
-        }
-    }};
-}
+#[macro_use]
+pub mod macros;
 
-#[cfg(test)]
-macro_rules! round_trip_with_constraints {
-    ($codec:ident, $typ:ty, $constraints:expr, $value:expr, $expected:expr) => {{
-        let value: $typ = $value;
-        let expected: &[u8] = $expected;
-        let actual_encoding = crate::$codec::encode_with_constraints($constraints, &value).unwrap();
-
-        pretty_assertions::assert_eq!(expected, &*actual_encoding);
-
-        let decoded_value: $typ =
-            crate::$codec::decode_with_constraints($constraints, &actual_encoding).unwrap();
-
-        pretty_assertions::assert_eq!(value, decoded_value);
-    }};
-}
-#[cfg(test)]
-macro_rules! encode_error_with_constraints {
-    ($codec:ident, $typ:ty, $constraints:expr, $value:expr) => {{
-        let value: $typ = $value;
-        let result = crate::$codec::encode_with_constraints($constraints, &value);
-        match result {
-            Ok(actual_encoding) => {
-                panic!(
-                    "Expected an encoding error but got a valid encoding: {:?}",
-                    &*actual_encoding
-                );
-            }
-            Err(_) => {
-                // Expected an encoding error, so we're good!
-            }
-        }
-    }};
-}
-
-pub mod codec;
+mod bits;
+mod codec;
 pub mod de;
 pub mod enc;
+pub mod error;
+mod num;
+mod per;
 pub mod types;
 
 // Data Formats
 
-mod per;
-
 pub mod aper;
 pub mod ber;
-mod bits;
 pub mod cer;
 pub mod coer;
 pub mod der;
-pub mod error;
-pub mod examples;
-#[cfg(feature = "jer")]
 pub mod jer;
-mod num;
 pub mod oer;
 pub mod uper;
 
@@ -130,8 +32,14 @@ pub use self::{
     codec::Codec,
     de::{Decode, Decoder},
     enc::{Encode, Encoder},
-    types::{AsnType, Tag, TagTree},
+    types::AsnType,
 };
+
+#[doc(inline)]
+#[cfg(feature = "compiler")]
+#[cfg_attr(docsrs, doc(cfg(feature = "compiler")))]
+/// Compiler for ASN.1 Notation to Rust code.
+pub use rasn_compiler as compiler;
 
 /// A prelude containing the codec traits and all types defined in the [`types`]
 /// module.
@@ -139,6 +47,7 @@ pub mod prelude {
     pub use crate::{
         de::{Decode, Decoder},
         enc::{Encode, Encoder},
+        macros,
         types::*,
     };
 }
@@ -168,7 +77,7 @@ mod tests {
             }
         }
 
-        codecs!(uper, aper);
+        codecs!(uper, aper, oer, coer, ber);
     }
 
     #[test]
@@ -206,20 +115,23 @@ mod tests {
         i16,
         i32,
         i64,
+        // i128, TODO i128 does not work for UPER/APER
         isize,
         u8,
         u16,
         u32,
         u64,
+        // TODO cannot support u128 as it is constrained type by default and current constraints uses i128 for bounds
+        // u128,
         usize
     }
 
     #[test]
     fn integer() {
-        round_trip(&Integer::from(89));
-        round_trip(&Integer::from(256));
-        round_trip(&Integer::from(u64::MAX));
-        round_trip(&Integer::from(i64::MIN));
+        round_trip(&89);
+        round_trip(&256);
+        round_trip(&u64::MAX);
+        round_trip(&i64::MIN);
     }
 
     #[test]
@@ -229,21 +141,19 @@ mod tests {
 
         impl crate::AsnType for CustomInt {
             const TAG: Tag = Tag::INTEGER;
-            const CONSTRAINTS: Constraints<'static> =
-                Constraints::new(&[Constraint::Value(constraints::Extensible::new(
-                    constraints::Value::new(constraints::Bounded::start_from(127)),
-                ))]);
+            const CONSTRAINTS: Constraints =
+                macros::constraints!(macros::value_constraint!(start: 127));
         }
 
         impl crate::Encode for CustomInt {
-            fn encode_with_tag_and_constraints<E: crate::Encoder>(
+            fn encode_with_tag_and_constraints<'b, E: crate::Encoder<'b>>(
                 &self,
                 encoder: &mut E,
                 tag: Tag,
                 constraints: Constraints,
             ) -> Result<(), E::Error> {
                 encoder
-                    .encode_integer(tag, constraints, &self.0.into())
+                    .encode_integer::<i128>(tag, constraints, &self.0.into())
                     .map(drop)
             }
         }

@@ -10,7 +10,7 @@ use crate::{
     MessageAuthenticationCodeAlgorithm, OriginatorInfo, RecipientInfos, RevocationInfoChoices,
     SignerInfos, UnauthAttributes,
 };
-use rasn::{AsnType, Decode, Encode};
+use rasn::prelude::*;
 
 /// The content is represented in the type EncapsulatedContentInfo
 #[derive(AsnType, Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -21,7 +21,7 @@ pub struct EncapsulatedContentInfo {
 }
 
 /// SignedData represents a signed-data content type
-#[derive(AsnType, Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(AsnType, Clone, Debug, Decode, Encode, PartialEq, Eq, Hash)]
 pub struct SignedData {
     pub version: CmsVersion,
     pub digest_algorithms: DigestAlgorithmIdentifiers,
@@ -43,7 +43,7 @@ pub struct DigestedData {
 }
 
 /// AuthenticatedData represents an authenticated-data content type
-#[derive(AsnType, Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(AsnType, Clone, Debug, Decode, Encode, PartialEq, Eq, Hash)]
 pub struct AuthenticatedData {
     pub version: CmsVersion,
     #[rasn(tag(0))]

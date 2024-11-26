@@ -6,6 +6,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.2](https://github.com/librasn/rasn/compare/rasn-kerberos-v0.20.1...rasn-kerberos-v0.20.2) - 2024-10-18
+
+### Fixed
+
+- Run clippy and rustdoc only on stable channel in CI ([#342](https://github.com/librasn/rasn/pull/342))
+
+## [0.18.0](https://github.com/librasn/rasn/compare/rasn-kerberos-v0.17.3...rasn-kerberos-v0.18.0) - 2024-09-17
+
+### Added
+
+- Constraint utilities, const default, more const functions ([#321](https://github.com/librasn/rasn/pull/321))
+
+### Fixed
+
+- [**breaking**] Remove Tag and TagTree from module root
+
+## [0.17.3](https://github.com/librasn/rasn/compare/rasn-kerberos-v0.17.2...rasn-kerberos-v0.17.3) - 2024-09-12
+
+### Other
+
+- update Cargo.toml dependencies
+
 ## [0.9.3](https://github.com/XAMPPRocky/rasn/compare/rasn-kerberos-v0.9.2...rasn-kerberos-v0.9.3) - 2023-08-06
 
 ### Other

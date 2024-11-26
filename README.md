@@ -3,6 +3,7 @@
 [![Help Wanted](https://img.shields.io/github/issues/XAMPPRocky/rasn/help%20wanted?color=green)](https://github.com/XAMPPRocky/rasn/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)
 [![Lines Of Code](https://tokei.rs/b1/github/XAMPPRocky/rasn?category=code)](https://github.com/XAMPPRocky/tokei)
 [![Documentation](https://docs.rs/rasn/badge.svg)](https://docs.rs/rasn/)
+[![Benchmarks](https://img.shields.io/badge/bencher-benchmarks-orange?link=https%3A%2F%2Fbencher.dev%2Fconsole%2Fprojects%2Frasn%2Fperf)](https://bencher.dev/perf/rasn/plots)
 
 Welcome to `rasn` (pronounced "raisin"), a safe `#[no_std]` ASN.1 codec framework.
 That enables you to safely create, share, and handle ASN.1 data types from and to different encoding rules. If you are unfamiliar with ASN.1 and encoding formats like BER/DER, I would recommend reading [*"A Warm Welcome to ASN.1 and DER"*][lenc] by Let's Encrypt as a quick introduction before continuing. In short it is an "Interface Description Language" (and data model) with a set of encoding formats (called rules) for that model. It was originally designed in the late 1980s and is used throughout the industry especially in telecommunications and cryptography.
@@ -21,7 +22,7 @@ Rasn is entirely `#[no_std]`, so you can share the same ASN.1 implementation on 
 ### Rich Data Types
 Rasn currently has support for nearly all of ASN.1's data types. `rasn` uses popular community libraries such as `bitvec`, `bytes`, and `chrono` for some of its data types as well as providing a couple of its own. Check out the [`types`][mod:types] module for what's currently available.
 
-[mod:types]: http://docs.rs/rasn/0.4.1/rasn/types/index.html
+[mod:types]: https://docs.rs/rasn/latest/rasn/types/index.html
 
 ### Safe  Codecs
 The encoder and decoder have been written in 100% safe Rust and fuzzed with [American Fuzzy Lop Plus Plus][bun] to ensure that the decoder correctly handles random input, and if valid that the encoder can correctly re-encode that value.
@@ -84,7 +85,7 @@ When modelling an ASN.1 data type, there are three traits we'll need to implemen
 
 ```rust
 # struct Person;
-use rasn::{AsnType, Tag};
+use rasn::{AsnType, types::Tag};
 
 impl AsnType for Person {
     // Default tag for sequences.
@@ -98,10 +99,10 @@ Next is the `Decode` and `Encode` traits. These are mirrors of each other and bo
 # use rasn::{AsnType, types::{Constructed, fields::{Field, Fields}}};
 # struct Person { name: Utf8String, age: Integer }
 # impl AsnType for Person { const TAG: Tag = Tag::SEQUENCE; }
-# impl Constructed for Person {
-#     const FIELDS: Fields = Fields::from_static(&[
-#          Field::new_required(Utf8String::TAG, Utf8String::TAG_TREE, "age"),
-#          Field::new_required(Integer::TAG, Integer::TAG_TREE, "name"),
+# impl Constructed<2, 0> for Person {
+#     const FIELDS: Fields<2> = Fields::from_static([
+#          Field::new_required(0, Utf8String::TAG, Utf8String::TAG_TREE, "age"),
+#          Field::new_required(1, Integer::TAG, Integer::TAG_TREE, "name"),
 #     ]);
 # }
 use rasn::{prelude::*, types::{Integer, Utf8String}};
@@ -118,9 +119,9 @@ impl Decode for Person {
 }
 
 impl Encode for Person {
-    fn encode_with_tag_and_constraints<E: Encoder>(&self, encoder: &mut E, tag: Tag, constraints: Constraints) -> Result<(), E::Error> {
+    fn encode_with_tag_and_constraints<'encoder, E: Encoder<'encoder>>(&self, encoder: &mut E, tag: Tag, constraints: Constraints) -> Result<(), E::Error> {
         // Accepts a closure that encodes the contents of the sequence.
-        encoder.encode_sequence::<Self, _>(tag, |encoder| {
+        encoder.encode_sequence::<2, 0, Self, _>(tag, |encoder| {
             self.age.encode(encoder)?;
             self.name.encode(encoder)?;
             Ok(())
@@ -131,9 +132,9 @@ impl Encode for Person {
 }
 ```
 
-That's it!  We've just created a new ASN.1 that be encoded and decoded to BER, CER, and DER; and nowhere did we have to check the tag, the length, or whether the string was primitive or constructed encoded. All those nasty encoding rules details are completely abstracted away so your type only has handle how to map to and from ASN.1's data model.
+That's it!  We've just created a new ASN.1 that can be encoded and decoded to BER, CER, and DER; and nowhere did we have to check the tag, the length, or whether the string was primitive or constructed encoded. All those nasty encoding rules details are completely abstracted away so your type only has handle how to map to and from ASN.1's data model.
 
-With all the actual conversion code isolated to the codec implementations you can know that your model is always safe to use. The API has also been designed to prevent you from making common logic errors that can lead to invalid encoding. For example; if we look back our `Encode` implementation, and what if we forgot to use the encoder we were given in `encode_sequence` and tired to use the parent instead?
+With all the actual conversion code isolated to the codec implementations you can know that your model is always safe to use. The API has also been designed to prevent you from making common logic errors that can lead to invalid encoding. For example; if we look back at our `Encode` implementation, what if we forgot to use the encoder we were given in `encode_sequence` and tried to use the parent instead?
 
 ```text
 error[E0501]: cannot borrow `*encoder` as mutable because previous closure requires unique access
@@ -167,7 +168,7 @@ error[E0500]: closure requires unique access to `encoder` but it is already borr
 Our code fails to compile! Which, in this case is great, there's no chance that our contents will accidentally be encoded in the wrong sequence because we forgot to change the name of a variable. These ownership semantics also mean that an `Encoder` can't accidentally encode the contents of a sequence multiple times in their implementation.  Let's see how we can try to take this even further.
 
 ### Compile-Safe ASN.1 With Macros
-So far we've shown how rasn's API takes steps to be safe and protect from accidentally creating an invalid model. However, it's often hard to cover everything in an imperative API. Something that is important to understand about ASN.1 that isn't obvious in the above examples is that; in ASN.1, all types can be identified by a tag (essentially two numbers e.g. `INTEGER`'s tag is `0, 2`). Field and variant names are not transmitted in most encoding rules, so this tag is also used to identify fields or variants in a `SEQUENCE` or `CHOICE`. This means that every that in a ASN.1 struct or enum every field and variant  **must have** a distinct tag for the whole type to be considered valid. For example ; If we changed `age` in `Person` to be a `String` like below it would be invalid ASN.1 even though it compiles and runs correctly, we have to either use a different type or override `age`'s tag to be distinct from `name`'s. When implementing the `AsnType` trait yourself this requirement must checked by manually, however as we'll see you generally won't need to do that.
+So far we've shown how rasn's API takes steps to be safe and protect from accidentally creating an invalid model. However, it's often hard to cover everything in an imperative API. Something that is important to understand about ASN.1 that isn't obvious in the above examples is that; in ASN.1, all types can be identified by a tag (essentially two numbers e.g. `INTEGER`'s tag is `0, 2`). Field and variant names are not transmitted in most encoding rules, so this tag is also used to identify fields or variants in a `SEQUENCE` or `CHOICE`. This means that in a ASN.1 struct or enum every field and variant  **must have** a distinct tag for the whole type to be considered valid. For example ; If we changed `age` in `Person` to be a `String` like below it would be invalid ASN.1 even though it compiles and runs correctly, we have to either use a different type or override `age`'s tag to be distinct from `name`'s. When implementing the `AsnType` trait yourself this requirement must be checked manually, however as we'll see you generally won't need to do that.
 
 Included with rasn is a set of derive macros that enable you to have your ASN.1 model implementation implemented declaratively. The `Encode` and `Decode` macros will essentially auto-generate the implementations we showed earlier, but the real magic is the `AsnType` derive macro. Thanks to the `static-assertations` crate and recent developments in `const fn`; the `AsnType` derive will not only generate your `AsnType` implementation, it will also generate a check that asserts that every field or variant has a distinct tag at *compile-time*. This means now if for some reason we made a change to one of the types in person, we don't have re-check that our model is still valid, the compiler takes care of that for us.
 
@@ -193,7 +194,7 @@ s are correct.', tests/derive.rs:146:10
     = note: this error originates in the macro `$crate::panic::panic_2015` (in Nightly builds, run with -Z macro-backtrace for more info)
 ```
 
-Validating your model at compile-time enables you to work on ASN.1 code without fear that you're unintentionally changing something in the background. I bet you're wondering now though, how we are supposed to have a struct with two strings for fields? The answer is thankfully pretty simple, you just add `#[rasn(tag)]` attribute to override the tags of one or more of the types. However we can actually go further, because in ASN.1 there's the concept of having `AUTOMATIC TAGS` which essentially tells your ASN.1 compiler to automatically generate distinct tags for your ASN.1 definition. Now with rasn you can do that in Rust! Applying `#[rasn(automatic_tags)]` to the container  automatically generate tags will apply the same automatic tagging transformation you'd expect from an ASN.1 compiler.
+Validating your model at compile-time enables you to work on ASN.1 code without fear that you're unintentionally changing something in the background. I bet you're wondering now though, how we are supposed to have a struct with two strings for fields? The answer is thankfully pretty simple, you just add `#[rasn(tag)]` attribute to override the tags of one or more of the types. However we can actually go further, because in ASN.1 there's the concept of having `AUTOMATIC TAGS` which essentially tells your ASN.1 compiler to automatically generate distinct tags for your ASN.1 definition. Now with rasn you can do that in Rust! Applying `#[rasn(automatic_tags)]` to the container will apply the same automatic tagging transformation you'd expect from an ASN.1 compiler.
 
 ```rust
 use rasn::AsnType;
@@ -243,7 +244,7 @@ type TestTypeB = bool;
 type TestTypeA = TestTypeB;
 ```
 ```rust
-// or 
+// or
 use rasn::prelude::*;
 
 #[derive(AsnType, Decode, Encode)]
@@ -415,6 +416,8 @@ struct TestTypeC(pub Integer);
 
 </td>
 </tr>
+
+<tr>
 <td>Extensible value constraint</td>
 <td>
 
@@ -440,6 +443,7 @@ struct TestTypeB(pub Integer);
 
 </td>
 </tr>
+
 <tr>
 <td>ENUMERATED type</td>
 <td>
@@ -621,11 +625,11 @@ Test-type-a ::= CHOICE {
     raisin OCTET STRING
 }
 
-Test-type-b ::= CHOICE { 
-    juice INTEGER (0..3,...), 
+Test-type-b ::= CHOICE {
+    juice INTEGER (0..3,...),
     wine OCTET STRING,
     ...,
-    grappa INTEGER 
+    grappa INTEGER
 }
 ```
 
@@ -663,8 +667,8 @@ enum TestTypeB {
 <td>
 
 ```asn
-Test-type-a ::= SEQUENCE { 
-    juice INTEGER (0..3,...), 
+Test-type-a ::= SEQUENCE {
+    juice INTEGER (0..3,...),
     wine OCTET STRING,
     ...,
     grappa INTEGER OPTIONAL,
@@ -699,7 +703,7 @@ struct TestTypeA {
 <td>
 
 ```asn
-Test-type-a ::= SET { 
+Test-type-a ::= SET {
     seed NULL,
     grape BOOLEAN,
     raisin INTEGER
@@ -711,7 +715,7 @@ Test-type-a ::= SET {
 
 ```rust
 use rasn::prelude::*;
-/// the SET declaration is basically identical to a SEQUENCE declaration, 
+/// the SET declaration is basically identical to a SEQUENCE declaration,
 /// except for the `set` annotation
 #[derive(AsnType, Decode, Encode)]
 #[rasn(set, automatic_tags)]
@@ -730,7 +734,7 @@ struct TestTypeA {
 <td>
 
 ```asn
-Test-type-a ::= SEQUENCE { 
+Test-type-a ::= SEQUENCE {
     notQuiteRustCase INTEGER
 }
 ```
@@ -757,7 +761,7 @@ struct TestTypeA {
 <td>
 
 ```asn
-Test-type-a ::= SEQUENCE { 
+Test-type-a ::= SEQUENCE {
     seed BOOLEAN DEFAULT TRUE,
     grape INTEGER OPTIONAL,
     raisin INTEGER DEFAULT 1
@@ -773,7 +777,7 @@ use rasn::prelude::*;
 #[derive(AsnType, Decode, Encode)]
 #[rasn(automatic_tags)]
 struct TestTypeA {
-    #[rasn(default = "default_seed")] 
+    #[rasn(default = "default_seed")]
     seed: bool,
     grape: Option<Integer>,
     #[rasn(default = "default_raisin")]

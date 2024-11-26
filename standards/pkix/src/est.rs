@@ -36,9 +36,10 @@ pub struct Attribute {
 
 #[cfg(test)]
 mod tests {
+    use base64::prelude::{Engine as _, BASE64_STANDARD};
     use pretty_assertions::assert_eq;
 
-    use alloc::{borrow::Cow, collections::BTreeSet, string::ToString, vec};
+    use alloc::{borrow::Cow, string::ToString, vec};
 
     use super::*;
 
@@ -78,7 +79,7 @@ mod tests {
                     1, 3, 6, 1, 5, 5, 7, 48, 1,
                 ])),
                 values: {
-                    let mut b = BTreeSet::new();
+                    let mut b = SetOf::new();
                     b.insert(rasn::types::Any::new(
                         rasn::der::encode(
                             &rasn::types::PrintableString::try_from("And me second".to_string())
@@ -128,7 +129,7 @@ mod tests {
                     1, 2, 840, 10045, 2, 1,
                 ])),
                 values: {
-                    let mut b = BTreeSet::new();
+                    let mut b = SetOf::new();
                     b.insert(rasn::types::Any::new(
                         // secp384r1 (SECG (Certicom) named elliptic curve)
                         rasn::der::encode(&rasn::types::ObjectIdentifier::new_unchecked(
@@ -145,7 +146,7 @@ mod tests {
                     1, 2, 840, 113549, 1, 9, 14,
                 ])),
                 values: {
-                    let mut b = BTreeSet::new();
+                    let mut b = SetOf::new();
                     b.insert(rasn::types::Any::new(
                         rasn::der::encode(&rasn::types::ObjectIdentifier::new_unchecked(
                             Cow::from(vec![1, 3, 6, 1, 1, 1, 1, 22]),
@@ -163,7 +164,7 @@ mod tests {
 
         let data_bin = rasn::der::encode(&data).unwrap();
         let txt = "MEEGCSqGSIb3DQEJBzASBgcqhkjOPQIBMQcGBSuBBAAiMBYGCSqGSIb3DQEJDjEJBgcrBgEBAQEWBggqhkjOPQQDAw==";
-        let bin = base64::decode(txt).unwrap();
+        let bin = BASE64_STANDARD.decode(txt).unwrap();
         assert_eq!(data_bin, bin);
         let decoded_data = rasn::der::decode::<CsrAttrs>(&bin);
         assert!(decoded_data.is_ok());
@@ -181,7 +182,7 @@ mod tests {
             AttrOrOid::Attribute(Attribute {
                 r#type: rasn::types::ObjectIdentifier::new_unchecked(Cow::from(vec![2, 999, 1])),
                 values: {
-                    let mut b = BTreeSet::new();
+                    let mut b = SetOf::new();
                     b.insert(rasn::types::Any::new(
                         rasn::der::encode(
                             &rasn::types::PrintableString::try_from(
@@ -201,7 +202,7 @@ mod tests {
             AttrOrOid::Attribute(Attribute {
                 r#type: rasn::types::ObjectIdentifier::new_unchecked(Cow::from(vec![2, 999, 2])),
                 values: {
-                    let mut b = BTreeSet::new();
+                    let mut b = SetOf::new();
                     b.insert(rasn::types::Any::new(
                         rasn::der::encode(&rasn::types::ObjectIdentifier::new_unchecked(
                             Cow::from(vec![2, 999, 3]),
@@ -238,7 +239,7 @@ mod tests {
 
         let data_bin = rasn::der::encode(&data).unwrap();
         let txt = "MHwGBysGAQEBARYwIgYDiDcBMRsTGVBhcnNlIFNFVCBhcyAyLjk5OS4xIGRhdGEGCSqGSIb3DQEJBzAsBgOINwIxJQYDiDcDBgOINwQTGVBhcnNlIFNFVCBhcyAyLjk5OS4yIGRhdGEGCSskAwMCCAEBCwYJYIZIAWUDBAIC";
-        let bin = base64::decode(txt).unwrap();
+        let bin = BASE64_STANDARD.decode(txt).unwrap();
         assert_eq!(bin, data_bin);
         let decoded_data = rasn::der::decode::<CsrAttrs>(&bin);
         assert!(decoded_data.is_ok());

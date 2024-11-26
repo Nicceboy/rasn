@@ -6,6 +6,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0](https://github.com/librasn/rasn/compare/rasn-snmp-v0.20.2...rasn-snmp-v0.21.0) - 2024-11-12
+
+### Other
+
+- Optimize field presence tracking of default/optional/extended fields ([#324](https://github.com/librasn/rasn/pull/324))
+
+## [0.20.2](https://github.com/librasn/rasn/compare/rasn-snmp-v0.20.1...rasn-snmp-v0.20.2) - 2024-10-18
+
+### Fixed
+
+- Run clippy and rustdoc only on stable channel in CI ([#342](https://github.com/librasn/rasn/pull/342))
+
+## [0.18.0](https://github.com/librasn/rasn/compare/rasn-snmp-v0.17.3...rasn-snmp-v0.18.0) - 2024-09-17
+
+### Fixed
+
+- [**breaking**] Remove Tag and TagTree from module root
+
+## [0.17.3](https://github.com/librasn/rasn/compare/rasn-snmp-v0.17.2...rasn-snmp-v0.17.3) - 2024-09-12
+
+### Other
+
+- update Cargo.toml dependencies
+
 ## [0.12.0](https://github.com/XAMPPRocky/rasn/compare/rasn-snmp-v0.11.1...rasn-snmp-v0.12.0) - 2023-11-12
 
 ### Other

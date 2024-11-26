@@ -39,9 +39,11 @@ pub fn encode_with_constraints<T: crate::Encode>(
 #[cfg(test)]
 mod tests {
     use crate::{
+        macros::{constraints, permitted_alphabet_constraint, size_constraint},
         prelude::*,
         types::{constraints::*, *},
     };
+
     #[test]
     fn bool() {
         round_trip!(uper, bool, true, &[0x80]);
@@ -96,42 +98,36 @@ mod tests {
             " 0123456789".try_into().unwrap(),
             &[0x0b, 0x01, 0x23, 0x45, 0x67, 0x89, 0xa0]
         );
+        const CONSTRAINT_1: Constraints = constraints!(size_constraint!(5));
         round_trip_with_constraints!(
             uper,
             NumericString,
-            Constraints::new(&[Constraint::Size(Size::new(Bounded::Single(5)).into())]),
+            CONSTRAINT_1,
             "1 9 5".try_into().unwrap(),
             &[0x20, 0xa0, 0x60]
         );
 
+        const CONSTRAINT_2: Constraints = constraints!(size_constraint!(19, 134));
         round_trip_with_constraints!(
             uper,
             NumericString,
-            Constraints::new(&[Constraint::Size(
-                Size::new(Bounded::Range {
-                    start: 19.into(),
-                    end: 134.into()
-                })
-                .into()
-            )]),
+            CONSTRAINT_2,
             "0123456789 9876543210".try_into().unwrap(),
             &[0x04, 0x24, 0x68, 0xac, 0xf1, 0x34, 0x15, 0x30, 0xec, 0xa8, 0x64, 0x20]
         );
+        const CONSTRAINT_3: Constraints = constraints!(permitted_alphabet_constraint!(&[
+            b'0' as u32,
+            b'1' as u32,
+            b'2' as u32,
+            b'3' as u32,
+            b'4' as u32,
+            b'5' as u32
+        ]));
 
         round_trip_with_constraints!(
             uper,
             NumericString,
-            Constraints::new(&[Constraint::PermittedAlphabet(
-                PermittedAlphabet::new(&[
-                    b'0' as u32,
-                    b'1' as u32,
-                    b'2' as u32,
-                    b'3' as u32,
-                    b'4' as u32,
-                    b'5' as u32
-                ])
-                .into()
-            )]),
+            CONSTRAINT_3,
             "5".try_into().unwrap(),
             &[0x01, 0xa0]
         );
@@ -139,27 +135,22 @@ mod tests {
 
     #[test]
     fn visible_string() {
+        const CONSTRAINT_1: Constraints = constraints!(size_constraint!(19, 133));
         round_trip_with_constraints!(
             uper,
             VisibleString,
-            Constraints::new(&[Constraint::Size(
-                Size::new(Bounded::Range {
-                    start: 19.into(),
-                    end: 133.into()
-                })
-                .into()
-            )]),
+            CONSTRAINT_1,
             "HejHoppHappHippAbcde".try_into().unwrap(),
             &[
                 0x03, 0x23, 0x2e, 0xa9, 0x1b, 0xf8, 0x70, 0x91, 0x87, 0x87, 0x09, 0x1a, 0x78, 0x70,
                 0x83, 0x8b, 0x1e, 0x4c, 0xa0
             ]
         );
-
+        const CONSTRAINT_2: Constraints = constraints!(size_constraint!(5));
         round_trip_with_constraints!(
             uper,
             VisibleString,
-            Constraints::new(&[Constraint::Size(Size::new(Bounded::Single(5)).into())]),
+            CONSTRAINT_2,
             "Hejaa".try_into().unwrap(),
             &[0x91, 0x97, 0x56, 0x1c, 0x20]
         );
@@ -181,56 +172,41 @@ mod tests {
 
             array
         };
-
+        const CONSTRAINT_3: Constraints = constraints!(
+            size_constraint!(1, 255),
+            permitted_alphabet_constraint!(ALPHABET)
+        );
         round_trip_with_constraints!(
             uper,
             VisibleString,
-            Constraints::new(&[
-                Constraint::Size(
-                    Size::new(Bounded::Range {
-                        start: 1.into(),
-                        end: 255.into()
-                    })
-                    .into()
-                ),
-                Constraint::PermittedAlphabet(PermittedAlphabet::new(ALPHABET).into()),
-            ]),
+            CONSTRAINT_3,
             "hej".try_into().unwrap(),
             &[0x02, 0x39, 0x12]
         );
     }
     #[test]
     fn printable_string() {
+        const CONSTRAINT_1: Constraints = constraints!(size_constraint!(16));
         round_trip_with_constraints!(
             uper,
             PrintableString,
-            Constraints::new(&[Constraint::Size(Size::new(Bounded::Single(16)).into())]),
+            CONSTRAINT_1,
             PrintableString::from_bytes("0123456789abcdef".as_bytes()).unwrap(),
             &[0x60, 0xc5, 0x93, 0x36, 0x8d, 0x5b, 0x37, 0x70, 0xe7, 0x0e, 0x2c, 0x79, 0x32, 0xe6]
         );
+        const CONSTRAINT_2: Constraints = constraints!(size_constraint!(0, 31));
         round_trip_with_constraints!(
             uper,
             PrintableString,
-            Constraints::new(&[Constraint::Size(
-                Size::new(Bounded::Range {
-                    start: 0.into(),
-                    end: 31.into()
-                })
-                .into()
-            )]),
+            CONSTRAINT_2,
             "".try_into().unwrap(),
             &[0x00]
         );
+        const CONSTRAINT_3: Constraints = constraints!(size_constraint!(0, 31));
         round_trip_with_constraints!(
             uper,
             PrintableString,
-            Constraints::new(&[Constraint::Size(
-                Size::new(Bounded::Range {
-                    start: 0.into(),
-                    end: 31.into()
-                })
-                .into()
-            )]),
+            CONSTRAINT_3,
             "2".try_into().unwrap(),
             &[0x0b, 0x20]
         );
@@ -1004,6 +980,68 @@ mod tests {
                 b: ObjectIdentifier::new(vec![1, 2]).unwrap()
             },
             &[0x80, 0x95, 0x00]
+        );
+    }
+    #[test]
+    fn test_null_in_extended_option() {
+        use crate as rasn;
+        #[derive(AsnType, Debug, Encode, Decode, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+        #[rasn(automatic_tags)]
+        #[non_exhaustive]
+        pub struct Omitted {
+            pub a: Option<OctetString>,
+            #[rasn(extension_addition)]
+            pub omitted: Option<()>,
+        }
+        round_trip!(
+            uper,
+            Omitted,
+            Omitted {
+                a: Some(OctetString::from_static(&[0x00, 0x01, 0x02])),
+                omitted: Some(())
+            },
+            &[192, 192, 0, 64, 128, 64, 0]
+        );
+    }
+    #[test]
+    // https://github.com/librasn/rasn/issues/271
+    fn test_untagged_duplicate_type_option_on_sequence() {
+        use crate as rasn;
+        #[derive(AsnType, Decode, Encode, Clone, Debug, PartialEq, Eq)]
+        pub struct SequenceOptionals {
+            pub it: Integer,
+            pub is: Option<OctetString>,
+            pub late: Option<Integer>,
+        }
+        round_trip!(
+            uper,
+            SequenceOptionals,
+            SequenceOptionals {
+                it: 1.into(),
+                is: Some(OctetString::from_static(&[0x01, 0x02, 0x03])),
+                late: None
+            },
+            &[0b10000000, 0x40, 0x40, 0xc0, 0x40, 0x80, 0xc0]
+        );
+        #[derive(AsnType, Decode, Encode, Clone, Debug, PartialEq, Eq)]
+        #[non_exhaustive]
+        pub struct SequenceDuplicatesExtended {
+            pub it: Integer,
+            pub is: Option<OctetString>,
+            pub late: Option<Integer>,
+            #[rasn(extension_addition)]
+            pub today: OctetString,
+        }
+        round_trip!(
+            uper,
+            SequenceDuplicatesExtended,
+            SequenceDuplicatesExtended {
+                it: 1.into(),
+                is: Some(OctetString::from_static(&[0x01, 0x02, 0x03])),
+                late: None,
+                today: OctetString::from_static(&[0x01, 0x02, 0x03])
+            },
+            &[0b11000000, 0x20, 0x20, 0x60, 0x20, 0x40, 0x60, 0x20, 0x80, 0x60, 0x20, 0x40, 0x60]
         );
     }
 }

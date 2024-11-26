@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use quote::ToTokens;
-use syn::{Lit, LitStr, NestedMeta, Path, UnOp};
+use syn::{parenthesized, Ident, LitStr, Path, Token, Type, UnOp};
 
 use crate::{ext::TypeExt, tag::Tag};
 
@@ -15,9 +15,8 @@ pub struct Constraints {
 
 impl Constraints {
     pub fn const_static_def(&self, crate_root: &syn::Path) -> Option<proc_macro2::TokenStream> {
-        self.const_expr(crate_root).map(
-            |expr| quote!(const CONSTRAINTS: #crate_root::types::Constraints<'static> = #expr;),
-        )
+        self.const_expr(crate_root)
+            .map(|expr| quote!(const CONSTRAINTS: #crate_root::types::Constraints = #expr;))
     }
 
     pub fn attribute_tokens(&self) -> Option<proc_macro2::TokenStream> {
@@ -219,7 +218,6 @@ pub struct Config {
     pub choice: bool,
     pub set: bool,
     pub automatic_tags: bool,
-    pub option_type: OptionalEnum,
     pub delegate: bool,
     pub tag: Option<Tag>,
     pub constraints: Constraints,
@@ -234,82 +232,53 @@ impl Config {
         let mut enumerated = false;
         let mut automatic_tags = false;
         let mut tag = None;
-        let mut option = None;
         let mut from = None;
         let mut size = None;
         let mut value = None;
         let mut delegate = false;
-        let extensible = input
-            .attrs
-            .iter()
-            .any(|a| a.path.is_ident("non_exhaustive"));
+        let mut extensible = false;
 
-        let mut iter = input
-            .attrs
-            .iter()
-            .filter(|a| a.path.is_ident(crate::CRATE_NAME))
-            .map(|a| a.parse_meta().unwrap());
+        for attr in &input.attrs {
+            if attr.path().is_ident("non_exhaustive") {
+                extensible = true;
+            } else if attr.path().is_ident(crate::CRATE_NAME) {
+                attr.parse_nested_meta(|meta| {
+                    let path = &meta.path;
+                    if path.is_ident("crate_root") {
+                        if !meta.input.is_empty() {
+                            let value = meta.value()?;
 
-        while let Some(syn::Meta::List(list)) = iter.next() {
-            for item in list.nested.iter().filter_map(|n| match n {
-                syn::NestedMeta::Meta(m) => Some(m),
-                _ => None,
-            }) {
-                let path = item.path();
-
-                if path.is_ident("crate_root") {
-                    if let syn::Meta::NameValue(nv) = item {
-                        crate_root = match &nv.lit {
-                            syn::Lit::Str(s) => s.parse::<syn::Path>().ok(),
-                            _ => None,
-                        };
+                            let s: LitStr = value.parse()?;
+                            let root: Path = s.parse()?;
+                            crate_root = Some(root);
+                        }
+                    } else if path.is_ident("identifier") {
+                        let value = meta.value()?;
+                        identifier = Some(value.parse()?);
+                    } else if path.is_ident("enumerated") {
+                        enumerated = true;
+                    } else if path.is_ident("choice") {
+                        choice = true;
+                    } else if path.is_ident("set") {
+                        set = true;
+                    } else if path.is_ident("automatic_tags") {
+                        automatic_tags = true;
+                    } else if path.is_ident("tag") {
+                        tag = Some(Tag::from_meta(&meta)?);
+                    } else if path.is_ident("delegate") {
+                        delegate = true;
+                    } else if path.is_ident("from") {
+                        from = Some(StringValue::from_meta(&meta)?);
+                    } else if path.is_ident("size") {
+                        size = Some(Value::from_meta(&meta)?);
+                    } else if path.is_ident("value") {
+                        value = Some(Value::from_meta(&meta)?);
+                    } else {
+                        panic!("unknown input provided: {}", path.to_token_stream());
                     }
-                } else if path.is_ident("identifier") {
-                    if let syn::Meta::NameValue(nv) = item {
-                        identifier = match &nv.lit {
-                            syn::Lit::Str(s) => Some(s.clone()),
-                            _ => None,
-                        };
-                    }
-                } else if path.is_ident("enumerated") {
-                    enumerated = true;
-                } else if path.is_ident("choice") {
-                    choice = true;
-                } else if path.is_ident("set") {
-                    set = true;
-                } else if path.is_ident("automatic_tags") {
-                    automatic_tags = true;
-                } else if path.is_ident("option_type") {
-                    if let syn::Meta::List(list) = item {
-                        let filter_into_paths = |nm: &_| match nm {
-                            syn::NestedMeta::Meta(meta) => Some(meta.path().clone()),
-                            _ => None,
-                        };
-                        let mut iter = list
-                            .nested
-                            .iter()
-                            .take(3)
-                            .filter_map(filter_into_paths)
-                            .fuse();
-
-                        let path = iter.next();
-                        let some_variant = iter.next();
-                        let none_variant = iter.next();
-                        option = Some((path, some_variant, none_variant));
-                    }
-                } else if path.is_ident("tag") {
-                    tag = Tag::from_meta(item);
-                } else if path.is_ident("delegate") {
-                    delegate = true;
-                } else if path.is_ident("from") {
-                    from = Some(StringValue::from_meta(item));
-                } else if path.is_ident("size") {
-                    size = Some(Value::from_meta(item));
-                } else if path.is_ident("value") {
-                    value = Some(Value::from_meta(item));
-                } else {
-                    panic!("unknown input provided: {}", path.to_token_stream());
-                }
+                    Ok(())
+                })
+                .unwrap()
             }
         }
 
@@ -339,36 +308,11 @@ impl Config {
             panic!("`#[rasn(delegate)]` is only valid on single-unit structs.");
         }
 
-        let option_type = {
-            let (path, some_variant, none_variant) = option.unwrap_or((None, None, None));
-
-            OptionalEnum {
-                path: path
-                    .and_then(|path| path.get_ident().cloned())
-                    .unwrap_or_else(|| syn::Ident::new("Option", proc_macro2::Span::call_site())),
-                some_variant: syn::TypePath {
-                    path: some_variant.unwrap_or_else(|| {
-                        Path::from(syn::Ident::new("Some", proc_macro2::Span::call_site()))
-                    }),
-                    qself: None,
-                }
-                .into(),
-                none_variant: syn::TypePath {
-                    path: none_variant.unwrap_or_else(|| {
-                        Path::from(syn::Ident::new("None", proc_macro2::Span::call_site()))
-                    }),
-                    qself: None,
-                }
-                .into(),
-            }
-        };
-
         Self {
             automatic_tags,
             choice,
             delegate,
             enumerated,
-            option_type,
             set,
             tag,
             identifier,
@@ -411,56 +355,47 @@ impl Config {
                     quote!(<#ty as #crate_root::AsnType>::TAG)
                 })
             })
-            .or_else(|| (fields == &syn::Fields::Unit).then(|| quote!(#crate_root::Tag::NULL)))
-            .or_else(|| self.set.then(|| quote!(#crate_root::Tag::SET)))
-            .unwrap_or(quote!(#crate_root::Tag::SEQUENCE))
+            .or_else(|| {
+                (fields == &syn::Fields::Unit).then(|| quote!(#crate_root::types::Tag::NULL))
+            })
+            .or_else(|| self.set.then(|| quote!(#crate_root::types::Tag::SET)))
+            .unwrap_or(quote!(#crate_root::types::Tag::SEQUENCE))
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct OptionalEnum {
-    pub path: syn::Ident,
-    #[allow(unused)]
-    pub some_variant: syn::Type,
-    #[allow(unused)]
-    pub none_variant: syn::Type,
+pub(crate) fn is_option_type(ty: &syn::Type) -> bool {
+    match ty {
+        syn::Type::Path(path) => path
+            .path
+            .segments
+            .last()
+            .map_or(false, |segment| segment.ident == "Option"),
+        syn::Type::Reference(syn::TypeReference { elem, .. }) => is_option_type(elem),
+        _ => false,
+    }
 }
 
-impl OptionalEnum {
-    pub(crate) fn is_option_type(&self, ty: &syn::Type) -> bool {
-        match ty {
-            syn::Type::Path(path) => path
-                .path
-                .segments
-                .last()
-                .map_or(false, |segment| segment.ident == self.path),
-            syn::Type::Reference(syn::TypeReference { elem, .. }) => self.is_option_type(elem),
-            _ => false,
-        }
-    }
-
-    pub(crate) fn map_to_inner_type<'ty>(&self, ty: &'ty syn::Type) -> Option<&'ty syn::Type> {
-        match ty {
-            syn::Type::Path(path) => path
-                .path
-                .segments
-                .last()
-                .filter(|segment| segment.ident == self.path)
-                .and_then(|segment| {
-                    if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
-                        args.args.first().and_then(|arg| {
-                            if let syn::GenericArgument::Type(ty) = arg {
-                                Some(ty)
-                            } else {
-                                None
-                            }
-                        })
-                    } else {
-                        None
-                    }
-                }),
-            _ => None,
-        }
+pub(crate) fn map_to_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
+    match ty {
+        syn::Type::Path(path) => path
+            .path
+            .segments
+            .last()
+            .filter(|segment| segment.ident == "Option")
+            .and_then(|segment| {
+                if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+                    args.args.first().and_then(|arg| {
+                        if let syn::GenericArgument::Type(ty) = arg {
+                            Some(ty)
+                        } else {
+                            None
+                        }
+                    })
+                } else {
+                    None
+                }
+            }),
+        _ => None,
     }
 }
 
@@ -488,39 +423,32 @@ impl<'config> VariantConfig<'config> {
         let mut tag = None;
         let mut value = None;
 
-        let mut iter = variant
-            .attrs
-            .iter()
-            .filter_map(|a| a.parse_meta().ok())
-            .filter(|m| m.path().is_ident(crate::CRATE_NAME));
-
-        while let Some(syn::Meta::List(list)) = iter.next() {
-            for item in list.nested.iter().filter_map(|n| match n {
-                syn::NestedMeta::Meta(m) => Some(m),
-                _ => None,
-            }) {
-                let path = item.path();
+        for attr in &variant.attrs {
+            if !attr.path().is_ident(crate::CRATE_NAME) {
+                continue;
+            }
+            attr.parse_nested_meta(|meta| {
+                let path = &meta.path;
                 if path.is_ident("tag") {
-                    tag = Tag::from_meta(item);
+                    tag = Some(Tag::from_meta(&meta).unwrap());
                 } else if path.is_ident("identifier") {
-                    if let syn::Meta::NameValue(nv) = item {
-                        identifier = match &nv.lit {
-                            syn::Lit::Str(s) => Some(s.clone()),
-                            _ => None,
-                        };
-                    }
+                    let value = meta.value()?;
+                    identifier = Some(value.parse()?);
                 } else if path.is_ident("size") {
-                    size = Some(Value::from_meta(item));
+                    size = Some(Value::from_meta(&meta).unwrap());
                 } else if path.is_ident("value") {
-                    value = Some(Value::from_meta(item));
+                    value = Some(Value::from_meta(&meta).unwrap());
                 } else if path.is_ident("from") {
-                    from = Some(StringValue::from_meta(item));
+                    from = Some(StringValue::from_meta(&meta).unwrap());
                 } else if path.is_ident("extensible") {
                     extensible = true;
                 } else if path.is_ident("extension_addition") {
                     extension_addition = true;
                 }
-            }
+
+                Ok(())
+            })
+            .unwrap();
         }
 
         Self {
@@ -576,6 +504,8 @@ impl<'config> VariantConfig<'config> {
         let tag_tree = self.tag_tree(context);
         let ident = &self.variant.ident;
         let is_explicit = self.has_explicit_tag();
+        let constraint_name = format_ident!("DECODE_CONSTRAINT_{}", context);
+        let mut const_constraint = quote! {};
 
         let decode_op = match &self.variant.fields {
             syn::Fields::Unit => {
@@ -607,12 +537,18 @@ impl<'config> VariantConfig<'config> {
                             .map(|path| quote!(#path))
                             .unwrap_or_else(|| quote!(<_>::default));
                         if let Some(constraints) = constraints {
-                            quote!(decoder.decode_default_with_tag_and_constraints(tag, #path, #constraints))
+                            const_constraint = quote! {
+                                const #constraint_name: #crate_root::types::constraints::Constraints = #constraints;
+                            };
+                            quote!(decoder.decode_default_with_tag_and_constraints(tag, #path, #constraint_name))
                         } else {
                             quote!(decoder.decode_default_with_tag(tag, #path))
                         }
                     } else if let Some(constraints) = constraints {
-                        quote!(<_>::decode_with_tag_and_constraints(decoder, tag, #constraints))
+                        const_constraint = quote! {
+                            const #constraint_name: #crate_root::types::constraints::Constraints = #constraints;
+                        };
+                        quote!(<_>::decode_with_tag_and_constraints(decoder, tag, #constraint_name))
                     } else {
                         quote!(<_>::decode_with_tag(decoder, tag))
                     }
@@ -633,7 +569,7 @@ impl<'config> VariantConfig<'config> {
                     .tag
                     .as_ref()
                     .map(|t| t.to_tokens(crate_root))
-                    .unwrap_or(quote!(#crate_root::Tag::SEQUENCE));
+                    .unwrap_or(quote!(#crate_root::types::Tag::SEQUENCE));
 
                 let decode_impl = super::decode::map_from_inner_type(
                     tag,
@@ -657,7 +593,8 @@ impl<'config> VariantConfig<'config> {
         };
 
         quote! {
-            if #crate_root::TagTree::tag_contains(&tag, &[#tag_tree]) {
+            if #crate_root::types::TagTree::tag_contains(&tag, &[#tag_tree]) {
+                #const_constraint
                 return #decode_op
             }
         }
@@ -682,7 +619,7 @@ impl<'config> VariantConfig<'config> {
         let crate_root = &self.container_config.crate_root;
         if self.tag.is_some() || self.container_config.automatic_tags {
             let tag = self.tag(context).to_tokens(crate_root);
-            quote!(#crate_root::TagTree::Leaf(#tag))
+            quote!(#crate_root::types::TagTree::Leaf(#tag))
         } else {
             let field_tags = self
                 .variant
@@ -694,7 +631,7 @@ impl<'config> VariantConfig<'config> {
 
             match self.variant.fields {
                 syn::Fields::Unit => {
-                    quote!(#crate_root::TagTree::Leaf(<() as #crate_root::AsnType>::TAG))
+                    quote!(#crate_root::types::TagTree::Leaf(<() as #crate_root::AsnType>::TAG))
                 }
                 syn::Fields::Named(_) => {
                     let error_message = format!(
@@ -705,10 +642,10 @@ impl<'config> VariantConfig<'config> {
                     );
 
                     quote!({
-                        const FIELD_LIST: &'static [#crate_root::TagTree] = &[#(#field_tags),*];
-                        const FIELD_TAG_TREE: #crate_root::TagTree = #crate_root::TagTree::Choice(FIELD_LIST);
+                        const FIELD_LIST: &'static [#crate_root::types::TagTree] = &[#(#field_tags),*];
+                        const FIELD_TAG_TREE: #crate_root::types::TagTree = #crate_root::types::TagTree::Choice(FIELD_LIST);
                         const _: () = assert!(FIELD_TAG_TREE.is_unique(), #error_message);
-                        #crate_root::TagTree::Leaf(#crate_root::Tag::SEQUENCE)
+                        #crate_root::types::TagTree::Leaf(#crate_root::types::Tag::SEQUENCE)
                     })
                 }
                 syn::Fields::Unnamed(_) => {
@@ -755,41 +692,32 @@ impl<'a> FieldConfig<'a> {
         let mut extensible = false;
         let mut extension_addition = false;
         let mut extension_addition_group = false;
-        let mut iter = field
-            .attrs
-            .iter()
-            .map(|a| a.parse_meta().unwrap())
-            .filter(|m| m.path().is_ident(crate::CRATE_NAME));
 
-        while let Some(syn::Meta::List(list)) = iter.next() {
-            for item in list.nested.iter().filter_map(|n| match n {
-                syn::NestedMeta::Meta(m) => Some(m),
-                _ => None,
-            }) {
-                let path = item.path();
+        for attr in &field.attrs {
+            if !attr.path().is_ident(crate::CRATE_NAME) {
+                continue;
+            }
+            attr.parse_nested_meta(|meta| {
+                let path = &meta.path;
                 if path.is_ident("tag") {
-                    tag = Tag::from_meta(item);
+                    tag = Some(Tag::from_meta(&meta).unwrap());
                 } else if path.is_ident("default") {
-                    default = Some(match item {
-                        syn::Meta::NameValue(value) => match &value.lit {
-                            syn::Lit::Str(lit_str) => lit_str.parse().map(Some).unwrap(),
-                            _ => panic!("Unsupported type for default."),
-                        },
-                        _ => None,
-                    });
-                } else if path.is_ident("identifier") {
-                    if let syn::Meta::NameValue(nv) = item {
-                        identifier = match &nv.lit {
-                            syn::Lit::Str(s) => Some(s.clone()),
-                            _ => None,
-                        };
+                    if meta.input.is_empty() || meta.input.peek(Token![,]) {
+                        default = Some(None);
+                    } else {
+                        let value = meta.value()?;
+                        let s: syn::LitStr = value.parse()?;
+                        default = Some(Some(s.parse()?));
                     }
+                } else if path.is_ident("identifier") {
+                    let value = meta.value()?;
+                    identifier = Some(value.parse()?);
                 } else if path.is_ident("size") {
-                    size = Some(Value::from_meta(item));
+                    size = Some(Value::from_meta(&meta).unwrap());
                 } else if path.is_ident("value") {
-                    value = Some(Value::from_meta(item));
+                    value = Some(Value::from_meta(&meta).unwrap());
                 } else if path.is_ident("from") {
-                    from = Some(StringValue::from_meta(item));
+                    from = Some(StringValue::from_meta(&meta).unwrap());
                 } else if path.is_ident("extensible") {
                     extensible = true;
                 } else if path.is_ident("extension_addition") {
@@ -802,7 +730,9 @@ impl<'a> FieldConfig<'a> {
                         path.get_ident().map(ToString::to_string)
                     );
                 }
-            }
+                Ok(())
+            })
+            .unwrap();
         }
 
         if extension_addition && extension_addition_group {
@@ -826,7 +756,12 @@ impl<'a> FieldConfig<'a> {
         }
     }
 
-    pub fn encode(&self, context: usize, use_self: bool) -> proc_macro2::TokenStream {
+    pub fn encode(
+        &self,
+        context: usize,
+        use_self: bool,
+        type_params: &[Ident],
+    ) -> proc_macro2::TokenStream {
         let this = use_self.then(|| quote!(self.));
         let tag = self.tag(context);
         let i = syn::Index::from(context);
@@ -840,44 +775,59 @@ impl<'a> FieldConfig<'a> {
         let crate_root = &self.container_config.crate_root;
         ty.strip_lifetimes();
         let default_fn = self.default_fn();
+        let has_generics = !type_params.is_empty() && {
+            if let Type::Path(ref ty) = ty {
+                ty.path.segments.iter().any(|seg| {
+                    let type_string = seg.into_token_stream().to_string();
+                    let type_parts: Vec<&str> = type_string.split(" ").collect();
+                    type_params
+                        .iter()
+                        .any(|param| type_parts.contains(&param.to_string().as_str()))
+                })
+            } else {
+                false
+            }
+        };
+        let constraint_name = format_ident!("FIELD_CONSTRAINT_{}", context);
+        let constraints = self
+            .constraints
+            .const_expr(&self.container_config.crate_root)
+            .unwrap_or_else(|| quote!(#crate_root::types::Constraints::default()));
+        let constraint_def = if has_generics {
+            quote! {
+                let #constraint_name: #crate_root::types::Constraints  = <#ty as #crate_root::AsnType>::CONSTRAINTS.intersect(const {#constraints});
+            }
+        } else {
+            quote! {
+                const #constraint_name : #crate_root::types::Constraints = <#ty as #crate_root::AsnType>::CONSTRAINTS.intersect(
+                    #constraints
+                );
+            }
+        };
 
         let encode = if self.tag.is_some() || self.container_config.automatic_tags {
             if self.tag.as_ref().map_or(false, |tag| tag.is_explicit()) {
-                let encode = quote!(encoder.encode_explicit_prefix(#tag, &self.#field)?;);
-                if self.is_option_type() {
-                    quote! {
-                        if #this #field.is_some() {
-                            #encode
-                        }
-                    }
-                } else {
-                    encode
-                }
+                // Note: encoder must be aware if the field is optional and present, so we should not do the presence check on this level
+                quote!(encoder.encode_explicit_prefix(#tag, &self.#field)?;)
             } else if self.extension_addition {
-                let constraints = self
-                    .constraints
-                    .const_expr(&self.container_config.crate_root)
-                    .unwrap_or_else(|| quote!(<_>::default()));
                 quote!(
+                    #constraint_def
                     encoder.encode_extension_addition(
                         #tag,
-                        <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
+                        #constraint_name,
                         &#this #field
                     )?;
                 )
             } else if self.extension_addition_group {
                 quote!(encoder.encode_extension_addition_group(#this #field.as_ref())?;)
             } else {
-                let constraints = self
-                    .constraints
-                    .const_expr(&self.container_config.crate_root)
-                    .unwrap_or_else(|| quote!(<_>::default()));
                 match (self.constraints.has_constraints(), self.default.is_some()) {
                     (true, true) => {
                         quote!(
+                            #constraint_def
                             encoder.encode_default_with_tag_and_constraints(
                                 #tag,
-                                <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
+                                #constraint_name,
                                 &#this #field,
                                 #default_fn
                             )?;
@@ -885,10 +835,11 @@ impl<'a> FieldConfig<'a> {
                     }
                     (true, false) => {
                         quote!(
+                            #constraint_def
                             #this #field.encode_with_tag_and_constraints(
                                 encoder,
                                 #tag,
-                                <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
+                                #constraint_name,
                                 #default_fn
                             )?;
                         )
@@ -900,14 +851,11 @@ impl<'a> FieldConfig<'a> {
                 }
             }
         } else if self.extension_addition {
-            let constraints = self
-                .constraints
-                .const_expr(&self.container_config.crate_root)
-                .unwrap_or_else(|| quote!(<_>::default()));
             quote!(
+                #constraint_def
                 encoder.encode_extension_addition(
                     #tag,
-                    <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
+                    #constraint_name,
                     &#this #field
                 )?;
             )
@@ -916,25 +864,21 @@ impl<'a> FieldConfig<'a> {
         } else {
             match (self.constraints.has_constraints(), self.default.is_some()) {
                 (true, true) => {
-                    let constraints = self
-                        .constraints
-                        .const_expr(&self.container_config.crate_root);
                     quote!(
+                        #constraint_def
                         encoder.encode_default_with_constraints(
-                            <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
+                            #constraint_name,
                             &#this #field,
                             #default_fn
                         )?;
                     )
                 }
                 (true, false) => {
-                    let constraints = self
-                        .constraints
-                        .const_expr(&self.container_config.crate_root);
                     quote!(
+                        #constraint_def
                         #this #field.encode_with_constraints(
                             encoder,
-                            <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
+                            #constraint_name,
                         )?;
                     )
                 }
@@ -948,13 +892,23 @@ impl<'a> FieldConfig<'a> {
         }
     }
 
-    pub fn decode_field_def(&self, name: &syn::Ident, context: usize) -> proc_macro2::TokenStream {
+    pub fn decode_field_def(
+        &self,
+        name: &syn::Ident,
+        context: usize,
+        type_params: &[Ident],
+    ) -> proc_macro2::TokenStream {
         let lhs = self.field.ident.as_ref().map(|i| quote!(#i :));
-        let decode_op = self.decode(name, context);
+        let decode_op = self.decode(name, context, type_params);
         quote!(#lhs #decode_op)
     }
 
-    pub fn decode(&self, name: &syn::Ident, context: usize) -> proc_macro2::TokenStream {
+    pub fn decode(
+        &self,
+        name: &syn::Ident,
+        context: usize,
+        type_params: &[Ident],
+    ) -> proc_macro2::TokenStream {
         let crate_root = &self.container_config.crate_root;
         let ty = &self.field.ty;
         let ident = format!(
@@ -966,14 +920,39 @@ impl<'a> FieldConfig<'a> {
                 .map(|ident| ident.to_string())
                 .unwrap_or_else(|| context.to_string())
         );
-
         let or_else = quote!(.map_err(|error| #crate_root::de::Error::field_error(#ident, error.into(), decoder.codec()))?);
         let default_fn = self.default_fn();
 
         let tag = self.tag(context);
+        let has_generics = !type_params.is_empty() && {
+            if let Type::Path(ty) = ty {
+                ty.path.segments.iter().any(|seg| {
+                    let type_string = seg.into_token_stream().to_string();
+                    let type_parts: Vec<&str> = type_string.split(" ").collect();
+                    type_params
+                        .iter()
+                        .any(|param| type_parts.contains(&param.to_string().as_str()))
+                })
+            } else {
+                false
+            }
+        };
+        let constraint_name = format_ident!("CONSTRAINT_{}", context);
         let constraints = self.constraints.const_expr(crate_root);
+        let constraint_def = if has_generics {
+            quote! {
+                let #constraint_name: #crate_root::types::Constraints  = <#ty as #crate_root::AsnType>::CONSTRAINTS.intersect(const {#constraints});
+            }
+        } else {
+            quote! {
+                const #constraint_name : #crate_root::types::Constraints = <#ty as #crate_root::AsnType>::CONSTRAINTS.intersect(
+                    #constraints
+                );
+            }
+        };
         let handle_extension = if self.is_not_option_or_default_type() {
-            quote!(.ok_or_else(|| #crate_root::de::Error::field_error(#ident, crate::error::DecodeError::extension_present_but_not_required(#tag, decoder.codec()), decoder.codec()))?)
+            quote!(.ok_or_else(|| {
+                #crate_root::de::Error::field_error(#ident, #crate_root::error::DecodeError::required_extension_not_present(#tag, decoder.codec()), decoder.codec())})?)
         } else if self.is_default_type() {
             quote!(.unwrap_or_else(#default_fn))
         } else {
@@ -993,59 +972,64 @@ impl<'a> FieldConfig<'a> {
                 self.constraints.has_constraints(),
             ) {
                 (Some(true), _, _) => {
-                    let or_else = if self.is_option_type() {
-                        quote!(.ok())
+                    if self.is_option_type() {
+                        quote!(
+                            decoder.decode_optional_with_explicit_prefix(#tag)?
+                        )
                     } else if self.is_default_type() {
-                        quote!(.ok().unwrap_or_else(#default_fn))
+                        quote!(
+                            decoder.decode_optional_with_explicit_prefix(#tag)?.unwrap_or_else(#default_fn)
+                        )
                     } else {
                         // False positive
-                        #[allow(clippy::redundant_clone)]
-                        or_else.clone()
-                    };
-
-                    quote!(decoder.decode_explicit_prefix(#tag) #or_else)
+                        quote!(decoder.decode_explicit_prefix(#tag) #or_else)
+                    }
                 }
                 (Some(false), Some(path), true) => {
-                    quote!(
+                    quote!({
+                        #constraint_def
                         decoder.decode_default_with_tag_and_constraints(
                             #tag,
                             #path,
-                            <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
-                        ) #or_else
+                            #constraint_name,
+                        ) #or_else }
                     )
                 }
                 (Some(false), Some(path), false) => {
                     quote!(decoder.decode_default_with_tag(#tag, #path) #or_else)
                 }
                 (Some(false), None, true) => {
-                    quote!(
+                    quote!({
+                        #constraint_def
                         <_>::decode_with_tag_and_constraints(
                             decoder,
                             #tag,
-                            <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
-                        ) #or_else
+                            #constraint_name,
+                        ) #or_else }
                     )
                 }
                 (Some(false), None, false) => {
                     quote!(<_>::decode_with_tag(decoder, #tag) #or_else)
                 }
                 (None, Some(path), true) => {
-                    quote!(
+                    quote!({
+                        #constraint_def
                         decoder.decode_default_with_constraints(
                             #path,
-                            <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
-                        ) #or_else
+                            #constraint_name,
+                        ) #or_else }
                     )
                 }
                 (None, Some(path), false) => {
                     quote!(decoder.decode_default(#path) #or_else)
                 }
                 (None, None, true) => {
-                    quote!(
+                    quote!({
+                        #constraint_def
                         <_>::decode_with_constraints(
                             decoder,
-                            <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
-                        ) #or_else
+                            #constraint_name,
+                        ) #or_else }
                     )
                 }
                 (None, None, false) => {
@@ -1056,35 +1040,93 @@ impl<'a> FieldConfig<'a> {
 
         if self.extension_addition {
             match (
+                (self.tag.is_some() || self.container_config.automatic_tags)
+                    .then(|| self.tag.as_ref().map_or(false, |tag| tag.is_explicit())),
                 self.default.as_ref().map(|path| {
                     path.as_ref()
                         .map_or(quote!(<_>::default), |path| quote!(#path))
                 }),
                 self.constraints.has_constraints(),
             ) {
-                (Some(path), true) => {
+                (Some(true), _, constraints) => {
+                    let or_else = if self.is_option_type() {
+                        quote!(.ok())
+                    } else if self.is_default_type() {
+                        quote!(.ok().unwrap_or_else(#default_fn))
+                    } else {
+                        // False positive
+                        #[allow(clippy::redundant_clone)]
+                        or_else.clone()
+                    };
+                    if constraints {
+                        {
+                            quote!(
+                                #constraint_def
+                                decoder.decode_extension_addition_with_explicit_tag_and_constraints(
+                                    #tag,
+                                    #constraint_name
+                                    ) #or_else #handle_extension)
+                        }
+                    } else {
+                        quote!(decoder.decode_extension_addition_with_explicit_tag_and_constraints(
+                            #tag,
+                            <#ty as #crate_root::AsnType>::CONSTRAINTS) #or_else #handle_extension)
+                    }
+                }
+                (Some(false), Some(path), true) => {
                     quote!(
-                        decoder.decode_extension_addition_with_default_and_constraints(
+                        #constraint_def
+                        decoder.decode_extension_addition_with_default_and_tag_and_constraints(
+                            #tag,
                             #path,
-                            <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
-                        ) #or_else
+                            #constraint_name
+                            ) #or_else
                     )
                 }
-                (Some(path), false) => {
+                (Some(false), None, true) => {
+                    quote!(
+                        {
+                            #constraint_def
+                            <_>::decode_extension_addition_with_tag_and_constraints(
+                                decoder,
+                                #tag,
+                                #constraint_name
+                            ) #or_else #handle_extension
+                        }
+                    )
+                }
+                (Some(false), Some(path), false) => {
+                    quote!(decoder.decode_extension_addition_with_default_and_tag(#tag, #path) #or_else)
+                }
+                (Some(false), None, false) => {
+                    quote!(<_>::decode_extension_addition_with_tag(decoder, #tag) #or_else #handle_extension)
+                }
+                (None, Some(path), true) => {
+                    quote!(
+                        {
+                        #constraint_def
+                        decoder.decode_extension_addition_with_default_and_constraints(
+                            #path,
+                            #constraint_name,
+                        ) #or_else }
+                    )
+                }
+                (None, Some(path), false) => {
                     quote!(
                         decoder.decode_extension_addition_with_default(
                             #path,
                         ) #or_else
                     )
                 }
-                (None, true) => {
-                    quote!(
+                (None, None, true) => {
+                    quote!({
+                        #constraint_def
                         decoder.decode_extension_addition_with_constraints(
-                            <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(#constraints),
-                        ) #or_else
+                            #constraint_name,
+                        ) #or_else }
                     )
                 }
-                (None, false) => {
+                (None, None, false) => {
                     quote! {
                         decoder.decode_extension_addition() #or_else #handle_extension
                     }
@@ -1129,7 +1171,7 @@ impl<'a> FieldConfig<'a> {
             let tag = tag.to_tokens(crate_root);
             quote!(#tag)
         } else if self.container_config.automatic_tags {
-            quote!(#crate_root::Tag::new(#crate_root::types::Class::Context, #context as u32))
+            quote!(#crate_root::types::Tag::new(#crate_root::types::Class::Context, #context as u32))
         } else {
             let mut ty = self.field.ty.clone();
             ty.strip_lifetimes();
@@ -1143,7 +1185,7 @@ impl<'a> FieldConfig<'a> {
 
         if self.tag.is_some() || self.container_config.automatic_tags {
             let tag = self.tag(context);
-            quote!(#crate_root::TagTree::Leaf(#tag))
+            quote!(#crate_root::types::TagTree::Leaf(#tag))
         } else {
             self.container_config.tag_tree_for_ty(ty)
         }
@@ -1172,7 +1214,7 @@ impl<'a> FieldConfig<'a> {
             }
         );
 
-        quote!({ #crate_root::types::fields::Field::#constructor(#tag, #tag_tree, #name) })
+        quote!({ #crate_root::types::fields::Field::#constructor(#context, #tag, #tag_tree, #name) })
     }
 
     pub fn field_type(&self) -> FieldType {
@@ -1194,9 +1236,7 @@ impl<'a> FieldConfig<'a> {
     }
 
     pub fn is_option_type(&self) -> bool {
-        self.container_config
-            .option_type
-            .is_option_type(&self.field.ty)
+        is_option_type(&self.field.ty)
     }
 
     pub fn is_default_type(&self) -> bool {
@@ -1231,7 +1271,7 @@ impl<T> From<T> for Constraint<T> {
 pub struct StringValue(pub Vec<u32>);
 
 impl StringValue {
-    fn from_meta(item: &syn::Meta) -> Constraint<StringValue> {
+    fn from_meta(item: &syn::meta::ParseNestedMeta) -> syn::Result<Constraint<StringValue>> {
         let mut values = Vec::new();
         let mut extensible: Option<_> = None;
 
@@ -1244,15 +1284,19 @@ impl StringValue {
             string.chars().map(u32::from).next()
         }
 
-        let syn::Meta::List(list) = item else {
-            panic!("Unsupported meta item: {:?}", item);
-        };
-
-        for item in &list.nested {
-            let string = match item {
-                NestedMeta::Lit(Lit::Str(string)) => string.value(),
-                NestedMeta::Meta(syn::Meta::Path(path)) => path.get_ident().unwrap().to_string(),
-                item => panic!("Unsupported meta item: {:?}", item),
+        let content;
+        parenthesized!(content in item.input);
+        while !content.is_empty() {
+            if content.peek(Token![,]) {
+                let _: Token![,] = content.parse()?;
+            }
+            let string = if content.peek(syn::LitStr) {
+                content.parse::<syn::LitStr>()?.value()
+            } else if content.peek(syn::Ident) {
+                let path: syn::Path = content.parse()?;
+                path.require_ident()?.to_string()
+            } else {
+                panic!("StringValue Unsupported meta item: {:?}", content);
             };
 
             if string == "extensible" {
@@ -1288,14 +1332,12 @@ impl StringValue {
                 values.push(StringRange::Range(start, end + is_inclusive as u32));
             }
         }
-
         let into_flat_set = |constraints: Vec<_>| {
-            use rayon::prelude::*;
             let mut set = constraints
                 .iter()
                 .flat_map(|from| match from {
                     StringRange::Single(value) => vec![*value],
-                    StringRange::Range(start, end) => (*start..*end).into_par_iter().collect(),
+                    StringRange::Range(start, end) => (*start..*end).collect::<Vec<u32>>(),
                 })
                 .collect::<Vec<u32>>();
             set.sort();
@@ -1303,10 +1345,10 @@ impl StringValue {
             set
         };
 
-        Constraint {
+        Ok(Constraint {
             constraint: Self((into_flat_set)(values)),
             extensible: extensible.map(|values| vec![Self((into_flat_set)(values))]),
-        }
+        })
     }
 }
 
@@ -1317,7 +1359,7 @@ pub enum Value {
 }
 
 impl Value {
-    fn from_meta(item: &syn::Meta) -> Constraint<Value> {
+    fn from_meta(item: &syn::meta::ParseNestedMeta) -> syn::Result<Constraint<Value>> {
         let mut extensible = None;
         let mut constraint = None;
 
@@ -1325,19 +1367,24 @@ impl Value {
             string.parse().ok()
         }
 
-        let syn::Meta::List(list) = item else {
-            panic!("Unsupported meta item: {:?}", item);
-        };
-
-        for item in list.nested.iter() {
-            let string = match item {
-                NestedMeta::Lit(Lit::Str(string)) => string.value(),
-                NestedMeta::Meta(syn::Meta::Path(path)) => path.get_ident().unwrap().to_string(),
-                NestedMeta::Lit(Lit::Int(int)) => {
-                    constraint = Some(int.base10_parse().map(Value::Single).unwrap());
-                    continue;
-                }
-                _ => panic!("Unsupported meta item: {item:?}"),
+        let content;
+        parenthesized!(content in item.input);
+        while !content.is_empty() {
+            if content.peek(Token![,]) {
+                let _: Token![,] = content.parse()?;
+                continue;
+            }
+            let string = if content.peek(syn::LitStr) {
+                content.parse::<syn::LitStr>()?.value()
+            } else if content.peek(syn::Ident) {
+                let path: syn::Path = content.parse()?;
+                path.get_ident().unwrap().to_string()
+            } else if content.peek(syn::LitInt) {
+                let int: syn::LitInt = content.parse()?;
+                constraint = Some(int.base10_parse().map(Value::Single).unwrap());
+                continue;
+            } else {
+                panic!("Value Unsupported meta item: {:?}", content);
             };
 
             if string == "extensible" {
@@ -1371,9 +1418,9 @@ impl Value {
             }
         }
 
-        Constraint {
+        Ok(Constraint {
             constraint: constraint.unwrap(),
             extensible,
-        }
+        })
     }
 }

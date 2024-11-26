@@ -135,10 +135,17 @@ mod tests {
 
     #[test]
     fn explicit_empty_tag() {
-        type EmptyTag = Explicit<C0, Option<()>>;
+        use crate as rasn;
+        use rasn::prelude::*;
+        #[derive(Debug, AsnType, Encode, Decode, PartialEq)]
+        struct EmptyTag {
+            #[rasn(tag(explicit(0)))]
+            a: Option<()>,
+        }
 
-        let value = EmptyTag::new(None);
-        let data = &[0xA0, 0][..];
+        let value = EmptyTag { a: None };
+        // Absent field - only sequence tag present with length of 0
+        let data = &[0x30, 0][..];
 
         assert_eq!(data, &*crate::ber::encode(&value).unwrap());
         assert_eq!(value, crate::ber::decode::<EmptyTag>(data).unwrap());
@@ -157,11 +164,12 @@ mod tests {
             const TAG: Tag = Tag::SET;
         }
 
-        impl crate::types::Constructed for Set {
-            const FIELDS: crate::types::fields::Fields =
-                crate::types::fields::Fields::from_static(&[
-                    crate::types::fields::Field::new_required(u32::TAG, u32::TAG_TREE, "age"),
+        impl crate::types::Constructed<2, 0> for Set {
+            const FIELDS: crate::types::fields::Fields<2> =
+                crate::types::fields::Fields::from_static([
+                    crate::types::fields::Field::new_required(0, u32::TAG, u32::TAG_TREE, "age"),
                     crate::types::fields::Field::new_required(
+                        1,
                         Utf8String::TAG,
                         Utf8String::TAG_TREE,
                         "name",
@@ -199,7 +207,7 @@ mod tests {
                     Name(Utf8String),
                 }
                 let codec = decoder.codec();
-                decoder.decode_set::<Fields, _, _, _>(
+                decoder.decode_set::<2, 0, Fields, _, _, _>(
                     tag,
                     |decoder, indice, tag| match (indice, tag) {
                         (0, u32::TAG) => <_>::decode(decoder).map(Fields::Age),
@@ -227,13 +235,13 @@ mod tests {
         }
 
         impl crate::Encode for Set {
-            fn encode_with_tag_and_constraints<EN: crate::Encoder>(
+            fn encode_with_tag_and_constraints<'b, EN: crate::Encoder<'b>>(
                 &self,
                 encoder: &mut EN,
-                tag: crate::Tag,
+                tag: crate::types::Tag,
                 _: Constraints,
             ) -> Result<(), EN::Error> {
-                encoder.encode_set::<Self, _>(tag, |encoder| {
+                encoder.encode_set::<2, 0, Self, _>(tag, |encoder| {
                     self.age.encode(encoder)?;
                     self.name.encode(encoder)?;
                     Ok(())
@@ -372,5 +380,49 @@ mod tests {
         let result = crate::ber::decode::<crate::types::UtcTime>(&data);
         assert!(result.is_ok());
         assert_eq!(dt1, result.unwrap());
+    }
+
+    #[test]
+    fn test_date() {
+        round_trip!(
+            ber,
+            Date,
+            NaiveDate::from_ymd_opt(2012, 12, 21).unwrap(),
+            &[0x1f, 0x1f, 0x08, 0x32, 0x30, 0x31, 0x32, 0x31, 0x32, 0x32, 0x31]
+        );
+    }
+    #[test]
+    fn test_extended_sequence() {
+        use crate as rasn;
+        use rasn::prelude::*;
+        #[derive(AsnType, Debug, Clone, Encode, Decode, PartialEq)]
+        #[rasn(automatic_tags)]
+        #[non_exhaustive]
+        pub struct ExtendedInteger {
+            #[rasn(extension_addition)]
+            pub extension: Option<u64>,
+        }
+        round_trip!(
+            ber,
+            ExtendedInteger,
+            ExtendedInteger {
+                extension: Some(42)
+            },
+            &[0x30, 0x03, 0x80, 0x01, 0x2A]
+        );
+        #[derive(AsnType, Debug, Clone, Encode, Decode, PartialEq)]
+        #[non_exhaustive]
+        pub struct ExtendedExplicitInteger {
+            #[rasn(extension_addition)]
+            #[rasn(tag(explicit(5)))]
+            pub extension: u64,
+        }
+
+        round_trip!(
+            ber,
+            ExtendedExplicitInteger,
+            ExtendedExplicitInteger { extension: 42 },
+            &[0x30, 0x05, 0xA5, 0x03, 0x02, 0x01, 0x2A]
+        );
     }
 }

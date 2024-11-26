@@ -4,6 +4,9 @@ pub(crate) use self::consts::*;
 use alloc::string::ToString;
 
 /// The class of tag identifying its category.
+///
+/// The order of the variants is equal to the canonical type order for tags,
+/// which allows us to use [Ord] to get the canonical ordering.
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 pub enum Class {
     /// Types defined in X.680.
@@ -50,12 +53,31 @@ impl core::fmt::Display for Class {
 
 /// An abstract representation of an ASN.1 tag that uniquely identifies a type
 /// within a ASN.1 module for codecs.
-#[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct Tag {
     /// The class of the tag.
     pub class: Class,
     /// The sub-class of the tag.
     pub value: u32,
+}
+impl Tag {
+    /// Constant implementation for [Ord] for [Tag].
+    pub const fn const_cmp(&self, other: &Tag) -> core::cmp::Ordering {
+        if (self.class as u8) < (other.class as u8) {
+            core::cmp::Ordering::Less
+        } else if (self.class as u8) > (other.class as u8) {
+            core::cmp::Ordering::Greater
+        } else {
+            // Classes are equal, compare values
+            if self.value < other.value {
+                core::cmp::Ordering::Less
+            } else if self.value > other.value {
+                core::cmp::Ordering::Greater
+            } else {
+                core::cmp::Ordering::Equal
+            }
+        }
+    }
 }
 
 /// Implement display for Tag; represents `class` as string and `value` as number.
@@ -127,7 +149,8 @@ consts! {
     GENERAL_STRING = 27,
     UNIVERSAL_STRING = 28,
     CHARACTER_STRING = 29,
-    BMP_STRING = 30
+    BMP_STRING = 30,
+    DATE = 31
 }
 
 impl Tag {
@@ -178,10 +201,11 @@ impl Tag {
 }
 
 /// The root or node in tree representing all of potential tags in a ASN.1 type.
+///
 /// For most types this is only ever one level deep, except for CHOICE enums
 /// which will contain a set of nodes, that either point to a `Leaf` or another
 /// level of `Choice`.
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum TagTree {
     /// The end of branch in the tree.
     Leaf(Tag),
@@ -190,10 +214,12 @@ pub enum TagTree {
 }
 
 impl TagTree {
+    /// Returns an empty tree.
     pub const fn empty() -> Self {
         Self::Choice(&[])
     }
 
+    /// Returns the tag with the smallest possible value from the tree.
     pub const fn smallest_tag(&self) -> Tag {
         match self {
             Self::Leaf(tag) => *tag,
@@ -238,7 +264,7 @@ impl TagTree {
                     while inner_index < inner_tags.len() {
                         if Self::tree_contains(
                             &inner_tags[inner_index],
-                            konst::slice::slice_from(nodes, index + 1),
+                            nodes.split_at(index + 1).1,
                         ) {
                             return false;
                         }
@@ -254,7 +280,7 @@ impl TagTree {
                         return true;
                     }
 
-                    if Self::tag_contains(tag, konst::slice::slice_from(nodes, index + 1)) {
+                    if Self::tag_contains(tag, nodes.split_at(index + 1).1) {
                         return false;
                     }
                 }

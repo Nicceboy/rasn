@@ -6,6 +6,193 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0](https://github.com/librasn/rasn/compare/rasn-v0.20.2...rasn-v0.21.0) - 2024-11-12
+
+### Added
+
+- Implement Algorithms and Identifiers PKIX module
+
+### Fixed
+
+- split iai and criterion benches, use correct adapters ([#366](https://github.com/librasn/rasn/pull/366))
+- cleanup some unnecessary dependencies ([#362](https://github.com/librasn/rasn/pull/362))
+- remove version pin from release-plz ([#356](https://github.com/librasn/rasn/pull/356))
+- Don't override generics impl in proc-macros on encode impl ([#354](https://github.com/librasn/rasn/pull/354))
+- pin release-plz version until fixed ([#353](https://github.com/librasn/rasn/pull/353))
+- decoding of extended fields in sequence in BER ([#351](https://github.com/librasn/rasn/pull/351))
+- Fix most issues related to dependency update, except hashbrown version ([#349](https://github.com/librasn/rasn/pull/349))
+
+### Other
+
+- Update README.md
+- Update README.md
+- Update README.md
+- Remove dependency on rayon ([#363](https://github.com/librasn/rasn/pull/363))
+- Extract proc macro into own crate ([#364](https://github.com/librasn/rasn/pull/364))
+- Update base_benchmarks.yml
+- Attempt to fix base benchmarks on CI ([#365](https://github.com/librasn/rasn/pull/365))
+- Update base_benchmarks.yml
+- Update base_benchmarks.yml
+- Create base_benchmarks.yml
+- Update from iai to iai-callgrind ([#358](https://github.com/librasn/rasn/pull/358))
+- black box integer test, use macros ([#360](https://github.com/librasn/rasn/pull/360))
+- Optimize field presence tracking of default/optional/extended fields ([#324](https://github.com/librasn/rasn/pull/324))
+- run x509 benches only on x86_64 or aarch64 ([#355](https://github.com/librasn/rasn/pull/355))
+- Add other X.509 libraries to bench
+- update dependencies
+- update lockfile
+- update lockfile
+- Create FUNDING.yml
+
+## [0.20.2](https://github.com/librasn/rasn/compare/rasn-v0.20.1...rasn-v0.20.2) - 2024-10-18
+
+### Fixed
+
+- Run clippy and rustdoc only on stable channel in CI ([#342](https://github.com/librasn/rasn/pull/342))
+
+### Other
+
+- Update to syn2 ([#345](https://github.com/librasn/rasn/pull/345))
+
+## [0.20.1](https://github.com/librasn/rasn/compare/rasn-v0.20.0...rasn-v0.20.1) - 2024-10-06
+
+### Other
+
+- OER: Fix tag decoding and optimise choice/tag encoding further ([#341](https://github.com/librasn/rasn/pull/341))
+- Fix some typos and word insertions/deletions ([#339](https://github.com/librasn/rasn/pull/339))
+
+## [0.20.0](https://github.com/librasn/rasn/compare/rasn-v0.19.0...rasn-v0.20.0) - 2024-09-30
+
+### Added
+
+- [**breaking**] update snafu to 0.8.5, impl `core::error::Error` for error types
+
+### Fixed
+
+- Reroll back to BTreeMap for field presence tracking ([#338](https://github.com/librasn/rasn/pull/338))
+
+## [0.19.0](https://github.com/librasn/rasn/compare/rasn-v0.18.0...rasn-v0.19.0) - 2024-09-22
+
+### Added
+
+- Export rasn-compiler as optional feature
+
+### Fixed
+
+- [**breaking**] Change *_constraint macros to accept `extensible` keyword over bool
+
+### Other
+
+- Use `OR` operator in Cargo.toml `license` field ([#335](https://github.com/librasn/rasn/pull/335))
+- Document more of rasn, add warning on missing documentation
+- Document more of rasn, remove unintentionally public items
+- Add rustdoc lint check
+- documentation lint fixes
+- Add module level top-line doc for JER
+- clippy fixes
+- move common macros into dedicated module
+- ObjectIdentifier::new: first arc may be 2 ([#331](https://github.com/librasn/rasn/pull/331))
+
+## [0.18.0](https://github.com/librasn/rasn/compare/rasn-v0.17.3...rasn-v0.18.0) - 2024-09-17
+
+### Added
+
+- [**breaking**] Rework for SetOf type ([#325](https://github.com/librasn/rasn/pull/325))
+- Change LDAPString to be newtype wrapper around String ([#327](https://github.com/librasn/rasn/pull/327))
+- [**breaking**] Remove option_type ([#329](https://github.com/librasn/rasn/pull/329))
+- Constraint utilities, const default, more const functions ([#321](https://github.com/librasn/rasn/pull/321))
+
+### Fixed
+
+- macros: include license texts in the packaged crate ([#330](https://github.com/librasn/rasn/pull/330))
+- [**breaking**] Remove jer feature, jer is enabled by default
+- [**breaking**] Remove Tag and TagTree from module root
+- [**breaking**] Make codec module private
+
+### Other
+
+- fix version-pinned types url ([#326](https://github.com/librasn/rasn/pull/326))
+- Add basic optimizations for allocations in OER ([#323](https://github.com/librasn/rasn/pull/323))
+
+## [0.17.3](https://github.com/librasn/rasn/compare/rasn-v0.17.2...rasn-v0.17.3) - 2024-09-12
+
+### Other
+
+- Add new field constructors that accept generics
+- Clippy fixes and CI artifact upload/download update ([#319](https://github.com/librasn/rasn/pull/319))
+- Update itertools to 0.13, update Cargo.lock
+- Add ZERO constant to integer, fix warnings
+
+## [0.17.2](https://github.com/librasn/rasn/compare/rasn-v0.17.1...rasn-v0.17.2) - 2024-09-09
+
+### Other
+
+- Replace BTreeMap with HashMap in field_bitfield ([#314](https://github.com/librasn/rasn/pull/314))
+- Two custom bench profiles for lto and debug ([#313](https://github.com/librasn/rasn/pull/313))
+
+## [0.17.1](https://github.com/librasn/rasn/compare/rasn-v0.17.0...rasn-v0.17.1) - 2024-09-07
+
+### Other
+
+- Reduce cloning in constraints ([#311](https://github.com/librasn/rasn/pull/311))
+
+## [0.17.0](https://github.com/librasn/rasn/compare/rasn-v0.16.6...rasn-v0.17.0) - 2024-09-05
+
+### Added
+- [**breaking**] `Integer` as enum type and optimized constrained and variable-sized integer encoding ([#289](https://github.com/librasn/rasn/pull/289))
+
+## [0.16.6](https://github.com/librasn/rasn/compare/rasn-v0.16.5...rasn-v0.16.6) - 2024-08-31
+
+### Other
+- Impl Display for ObjectIdentifier ([#306](https://github.com/librasn/rasn/pull/306))
+
+## [0.16.5](https://github.com/librasn/rasn/compare/rasn-v0.16.4...rasn-v0.16.5) - 2024-08-23
+
+### Other
+- Remove `to_vec` and `to_left_padded_vec` as unnecessary ([#300](https://github.com/librasn/rasn/pull/300))
+
+## [0.16.4](https://github.com/librasn/rasn/compare/rasn-v0.16.3...rasn-v0.16.4) - 2024-08-22
+
+### Added
+- Impl Display for Oid ([#297](https://github.com/librasn/rasn/pull/297))
+
+### Fixed
+- Move BER integer leading byte handling to codec level ([#299](https://github.com/librasn/rasn/pull/299))
+
+## [0.16.3](https://github.com/librasn/rasn/compare/rasn-v0.16.2...rasn-v0.16.3) - 2024-08-13
+
+### Other
+- Remove Cargo.lock from gitignore ([#294](https://github.com/librasn/rasn/pull/294))
+- fix untagged sequence bitfield ([#280](https://github.com/librasn/rasn/pull/280))
+
+## [0.16.2](https://github.com/librasn/rasn/compare/rasn-v0.16.1...rasn-v0.16.2) - 2024-08-05
+
+### Other
+- call correct  method for Default and Optional types when value is None. ([#290](https://github.com/librasn/rasn/pull/290))
+
+## [0.16.1](https://github.com/librasn/rasn/compare/rasn-v0.16.0...rasn-v0.16.1) - 2024-08-04
+
+### Other
+- Add integer value constraint checking for PER encoding ([#287](https://github.com/librasn/rasn/pull/287))
+
+## [0.16.0](https://github.com/librasn/rasn/compare/rasn-v0.15.3...rasn-v0.16.0) - 2024-07-17
+
+### Fixed
+- pass constraints correctly when encoding optional type ([#276](https://github.com/librasn/rasn/pull/276))
+- Hide `jer` behind feature (implying `std`). ([#266](https://github.com/librasn/rasn/pull/266))
+
+### Other
+- Fix error name regression introduced in a75b26b ([#285](https://github.com/librasn/rasn/pull/285))
+- Unify and Improve error handling of restricted strings ([#269](https://github.com/librasn/rasn/pull/269))
+- fix untagged sequence bitfield bits ([#279](https://github.com/librasn/rasn/pull/279))
+- fix encoding of empty extension values ([#278](https://github.com/librasn/rasn/pull/278))
+- correctly encode null in option in extensions ([#277](https://github.com/librasn/rasn/pull/277))
+- fix empty length decoding, no zero padding allowed ([#274](https://github.com/librasn/rasn/pull/274))
+- decode error when unused preamble bits are not zero ([#273](https://github.com/librasn/rasn/pull/273))
+- check quantity data size on sequence of ([#275](https://github.com/librasn/rasn/pull/275))
+- Fix invalid handling of zero padding on length of length on COER ([#268](https://github.com/librasn/rasn/pull/268))
+- Hide `snafu` backtraces behind `std`. ([#265](https://github.com/librasn/rasn/pull/265))
+
 ## [0.15.3](https://github.com/librasn/rasn/compare/rasn-v0.15.2...rasn-v0.15.3) - 2024-06-14
 
 ### Other

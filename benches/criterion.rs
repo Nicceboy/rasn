@@ -1,12 +1,10 @@
-//! Port of the `asn1tools` benchmark in Rust.
-
 mod common;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 use common::*;
 
-fn asn1tools(c: &mut Criterion) {
+fn rasn(c: &mut Criterion) {
     let decoded = black_box(bench_default());
 
     macro_rules! bench_encoding_rules {
@@ -21,22 +19,37 @@ fn asn1tools(c: &mut Criterion) {
         }}
     }
 
-    bench_encoding_rules!(ber, der, cer, uper);
+    bench_encoding_rules!(ber, der, cer, uper, oer);
 }
 
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 fn x509(c: &mut Criterion) {
-    use x509_parser::prelude::*;
-
     let data: &[u8] = include_bytes!("../standards/pkix/tests/data/letsencrypt-x3.crt");
-    let mut group = c.benchmark_group("Certificate");
+    let mut group = c.benchmark_group("X.509");
     group.bench_function("rasn", |b| {
         b.iter(|| black_box(rasn::der::decode::<rasn_pkix::Certificate>(data).unwrap()))
     });
-    group.bench_function("x509_parser", |b| {
-        b.iter(|| black_box(X509Certificate::from_der(data)))
+    group.bench_function("x509-parser", |b| {
+        b.iter(|| {
+            black_box(
+                <x509_parser::certificate::X509Certificate as x509_parser::prelude::FromDer<
+                    x509_parser::error::X509Error,
+                >>::from_der(data),
+            )
+        })
+    });
+    group.bench_function("x509-cert", |b| {
+        b.iter(|| black_box(<x509_cert::Certificate as x509_cert::der::Decode>::from_der(data)))
+    });
+    group.bench_function("x509-certificate", |b| {
+        b.iter(|| black_box(x509_certificate::X509Certificate::from_der(data)))
     });
     group.finish();
 }
 
-criterion_group!(codec, x509, asn1tools);
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+criterion_group!(codec, x509, rasn);
+
+#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+criterion_group!(codec, rasn);
 criterion_main!(codec);

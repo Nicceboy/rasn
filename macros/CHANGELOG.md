@@ -6,6 +6,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0](https://github.com/librasn/rasn/compare/rasn-derive-v0.20.2...rasn-derive-v0.21.0) - 2024-11-12
+
+### Fixed
+
+- cleanup some unnecessary dependencies ([#362](https://github.com/librasn/rasn/pull/362))
+- Don't override generics impl in proc-macros on encode impl ([#354](https://github.com/librasn/rasn/pull/354))
+- decoding of extended fields in sequence in BER ([#351](https://github.com/librasn/rasn/pull/351))
+
+### Other
+
+- Extract proc macro into own crate ([#364](https://github.com/librasn/rasn/pull/364))
+- Optimize field presence tracking of default/optional/extended fields ([#324](https://github.com/librasn/rasn/pull/324))
+- Disallow structs without fields for a `set` ([#352](https://github.com/librasn/rasn/pull/352))
+- update dependencies
+
+## [0.20.2](https://github.com/librasn/rasn/compare/rasn-derive-v0.20.1...rasn-derive-v0.20.2) - 2024-10-18
+
+### Fixed
+
+- Run clippy and rustdoc only on stable channel in CI ([#342](https://github.com/librasn/rasn/pull/342))
+
+### Other
+
+- Update to syn2 ([#345](https://github.com/librasn/rasn/pull/345))
+
+## [0.19.0](https://github.com/librasn/rasn/compare/rasn-derive-v0.18.0...rasn-derive-v0.19.0) - 2024-09-22
+
+### Other
+
+- clippy fixes
+
+## [0.18.0](https://github.com/librasn/rasn/compare/rasn-derive-v0.17.3...rasn-derive-v0.18.0) - 2024-09-17
+
+### Added
+
+- [**breaking**] Remove option_type ([#329](https://github.com/librasn/rasn/pull/329))
+- Constraint utilities, const default, more const functions ([#321](https://github.com/librasn/rasn/pull/321))
+
+### Fixed
+
+- macros: include license texts in the packaged crate ([#330](https://github.com/librasn/rasn/pull/330))
+- [**breaking**] Remove Tag and TagTree from module root
+
+## [0.17.3](https://github.com/librasn/rasn/compare/rasn-derive-v0.17.2...rasn-derive-v0.17.3) - 2024-09-12
+
+### Other
+
+- Update itertools to 0.13, update Cargo.lock
+
+## [0.16.0](https://github.com/librasn/rasn/compare/rasn-derive-v0.15.3...rasn-derive-v0.16.0) - 2024-07-17
+
+### Other
+- Fix error name regression introduced in a75b26b ([#285](https://github.com/librasn/rasn/pull/285))
+
 ## [0.15.3](https://github.com/librasn/rasn/compare/rasn-derive-v0.15.2...rasn-derive-v0.15.3) - 2024-06-14
 
 ### Other

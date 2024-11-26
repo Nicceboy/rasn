@@ -1,4 +1,4 @@
-//! # Encoding BER.
+//! Encoding Rust structures into Basic Encoding Rules data.
 
 mod config;
 
@@ -11,7 +11,7 @@ use crate::{
     types::{
         self,
         oid::{MAX_OID_FIRST_OCTET, MAX_OID_SECOND_OCTET},
-        Constraints, Enumerated, Tag,
+        Constraints, Enumerated, IntegerType, Tag,
     },
     Codec, Encode,
 };
@@ -22,7 +22,7 @@ pub use config::EncoderOptions;
 const START_OF_CONTENTS: u8 = 0x80;
 const END_OF_CONTENTS: &[u8] = &[0, 0];
 
-/// A BER and variants encoder. Capable of encoding to BER, CER, and DER.
+/// Encodes Rust structures into Basic Encoding Rules data.
 pub struct Encoder {
     output: Vec<u8>,
     config: EncoderOptions,
@@ -47,6 +47,8 @@ impl Encoder {
             set_buffer: <_>::default(),
         }
     }
+
+    /// Returns the currently selected codec.
     #[must_use]
     pub fn codec(&self) -> crate::Codec {
         self.config.current_codec()
@@ -304,15 +306,24 @@ impl Encoder {
             .to_string()
             .into_bytes()
     }
+
+    #[must_use]
+    /// Canonical byte presentation for CER/DER DATE as defined in X.690 section 8.26.2
+    /// Also used for BER on this crate.
+    pub fn naivedate_to_date_bytes(value: &chrono::NaiveDate) -> Vec<u8> {
+        value.format("%Y%m%d").to_string().into_bytes()
+    }
 }
 
-impl crate::Encoder for Encoder {
+impl crate::Encoder<'_> for Encoder {
     type Ok = ();
     type Error = EncodeError;
+    type AnyEncoder<'this, const R: usize, const E: usize> = Encoder;
 
     fn codec(&self) -> Codec {
         Self::codec(self)
     }
+
     fn encode_any(&mut self, _: Tag, value: &types::Any) -> Result<Self::Ok, Self::Error> {
         if self.is_set_encoding {
             return Err(BerEncodeErrorKind::AnyInSet.into());
@@ -370,16 +381,17 @@ impl crate::Encoder for Encoder {
         value: &E,
     ) -> Result<Self::Ok, Self::Error> {
         let value = E::discriminant(value);
-        self.encode_integer(tag, <_>::default(), &value.into())
+        self.encode_integer(tag, Constraints::default(), &value)
     }
 
-    fn encode_integer(
+    fn encode_integer<I: IntegerType>(
         &mut self,
         tag: Tag,
         _constraints: Constraints,
-        value: &num_bigint::BigInt,
+        value: &I,
     ) -> Result<Self::Ok, Self::Error> {
-        self.encode_primitive(tag, &value.to_signed_bytes_be());
+        let (bytes, needed) = value.to_signed_bytes_be();
+        self.encode_primitive(tag, &bytes.as_ref()[..needed]);
         Ok(())
     }
 
@@ -454,7 +466,7 @@ impl crate::Encoder for Encoder {
         _: Constraints,
         value: &types::TeletexString,
     ) -> Result<Self::Ok, Self::Error> {
-        self.encode_octet_string_(tag, value)
+        self.encode_octet_string_(tag, &value.to_bytes())
     }
 
     fn encode_bmp_string(
@@ -497,6 +509,12 @@ impl crate::Encoder for Encoder {
             tag,
             Self::datetime_to_canonical_generalized_time_bytes(value).as_slice(),
         );
+
+        Ok(())
+    }
+
+    fn encode_date(&mut self, tag: Tag, value: &types::Date) -> Result<Self::Ok, Self::Error> {
+        self.encode_primitive(tag, Self::naivedate_to_date_bytes(value).as_slice());
 
         Ok(())
     }
@@ -547,13 +565,14 @@ impl crate::Encoder for Encoder {
         Ok(())
     }
 
-    fn encode_set_of<E: Encode>(
+    fn encode_set_of<E: Encode + Eq + core::hash::Hash>(
         &mut self,
         tag: Tag,
         values: &types::SetOf<E>,
         _constraints: Constraints,
     ) -> Result<Self::Ok, Self::Error> {
         let mut encoded_values = values
+            .to_vec()
             .iter()
             .map(|val| {
                 let mut sequence_encoder = Self::new(self.config);
@@ -577,16 +596,22 @@ impl crate::Encoder for Encoder {
         tag: Tag,
         value: &V,
     ) -> Result<Self::Ok, Self::Error> {
-        let mut encoder = Self::new(self.config);
-        value.encode(&mut encoder)?;
-        self.encode_constructed(tag, &encoder.output);
+        if value.is_present() {
+            let mut encoder = Self::new(self.config);
+            value.encode(&mut encoder)?;
+            self.encode_constructed(tag, &encoder.output);
+        }
         Ok(())
     }
 
-    fn encode_sequence<C, F>(&mut self, tag: Tag, encoder_scope: F) -> Result<Self::Ok, Self::Error>
+    fn encode_sequence<'b, const RC: usize, const EC: usize, C, F>(
+        &'b mut self,
+        tag: Tag,
+        encoder_scope: F,
+    ) -> Result<Self::Ok, Self::Error>
     where
-        C: crate::types::Constructed,
-        F: FnOnce(&mut Self) -> Result<Self::Ok, Self::Error>,
+        C: crate::types::Constructed<RC, EC>,
+        F: FnOnce(&mut Self::AnyEncoder<'b, 0, 0>) -> Result<(), Self::Error>,
     {
         let mut encoder = Self::new(self.config);
 
@@ -597,10 +622,14 @@ impl crate::Encoder for Encoder {
         Ok(())
     }
 
-    fn encode_set<C, F>(&mut self, tag: Tag, encoder_scope: F) -> Result<Self::Ok, Self::Error>
+    fn encode_set<'b, const RC: usize, const EC: usize, C, F>(
+        &'b mut self,
+        tag: Tag,
+        encoder_scope: F,
+    ) -> Result<Self::Ok, Self::Error>
     where
-        C: crate::types::Constructed,
-        F: FnOnce(&mut Self) -> Result<Self::Ok, Self::Error>,
+        C: crate::types::Constructed<RC, EC>,
+        F: FnOnce(&mut Self::AnyEncoder<'b, 0, 0>) -> Result<(), Self::Error>,
     {
         let mut encoder = Self::new_set(self.config);
 
@@ -621,12 +650,12 @@ impl crate::Encoder for Encoder {
     }
 
     /// Encode a extension addition group value.
-    fn encode_extension_addition_group<E>(
+    fn encode_extension_addition_group<const RC: usize, const EC: usize, E>(
         &mut self,
         value: Option<&E>,
     ) -> Result<Self::Ok, Self::Error>
     where
-        E: Encode + crate::types::Constructed,
+        E: Encode + crate::types::Constructed<RC, EC>,
     {
         value.encode(self)
     }
@@ -637,12 +666,6 @@ mod tests {
     use super::*;
     use alloc::borrow::ToOwned;
     use alloc::vec;
-
-    #[derive(Clone, Copy, Hash, Debug, PartialEq)]
-    struct C0;
-    impl crate::AsnType for C0 {
-        const TAG: Tag = Tag::new(crate::types::Class::Context, 0);
-    }
 
     #[test]
     fn bit_string() {
@@ -669,6 +692,12 @@ mod tests {
                 Tag::new(crate::types::Class::Private, 127),
                 true,
             ))
+        );
+
+        // DATE Tag Rec. ITU-T X.680 (02/2021) section 8 Table 1
+        assert_eq!(
+            &[0x1F, 0x1F,][..],
+            ident_to_bytes(Identifier::from_tag(Tag::DATE, false,))
         );
     }
 
@@ -778,19 +807,19 @@ mod tests {
 
         struct Set;
 
-        impl crate::types::Constructed for Set {
-            const FIELDS: crate::types::fields::Fields =
-                crate::types::fields::Fields::from_static(&[
-                    crate::types::fields::Field::new_required(C0::TAG, C0::TAG_TREE, "field1"),
-                    crate::types::fields::Field::new_required(C1::TAG, C1::TAG_TREE, "field2"),
-                    crate::types::fields::Field::new_required(C2::TAG, C2::TAG_TREE, "field3"),
+        impl crate::types::Constructed<3, 0> for Set {
+            const FIELDS: crate::types::fields::Fields<3> =
+                crate::types::fields::Fields::from_static([
+                    crate::types::fields::Field::new_required(0, C0::TAG, C0::TAG_TREE, "field1"),
+                    crate::types::fields::Field::new_required(1, C1::TAG, C1::TAG_TREE, "field2"),
+                    crate::types::fields::Field::new_required(2, C2::TAG, C2::TAG_TREE, "field3"),
                 ]);
         }
 
         let output = {
             let mut encoder = Encoder::new_set(EncoderOptions::ber());
             encoder
-                .encode_set::<Set, _>(Tag::SET, |encoder| {
+                .encode_set::<3, 0, Set, _>(Tag::SET, |encoder| {
                     field3.encode(encoder)?;
                     field2.encode(encoder)?;
                     field1.encode(encoder)?;

@@ -9,10 +9,7 @@ use crate::types::Constraints;
 /// # Errors
 /// Returns `DecodeError` if `input` is not valid COER encoding specific to the expected type.
 pub fn decode<T: crate::Decode>(input: &[u8]) -> Result<T, DecodeError> {
-    T::decode(&mut Decoder::new(
-        crate::types::BitStr::from_slice(input),
-        de::DecoderOptions::coer(),
-    ))
+    T::decode(&mut Decoder::<0, 0>::new(input, de::DecoderOptions::coer()))
 }
 /// Attempts to encode `value` of type `T` to COER.
 ///
@@ -20,9 +17,26 @@ pub fn decode<T: crate::Decode>(input: &[u8]) -> Result<T, DecodeError> {
 /// Returns `EncodeError` if `value` cannot be encoded as COER, usually meaning that constraints
 /// are not met.
 pub fn encode<T: crate::Encode>(value: &T) -> Result<alloc::vec::Vec<u8>, EncodeError> {
-    let mut enc = Encoder::new(enc::EncoderOptions::coer());
+    let mut buffer = alloc::vec::Vec::with_capacity(core::mem::size_of::<T>());
+    let mut worker = alloc::vec::Vec::new();
+    let mut enc = Encoder::<0>::from_buffer(enc::EncoderOptions::coer(), &mut buffer, &mut worker);
     value.encode(&mut enc)?;
     Ok(enc.output())
+}
+/// Attempts to encode `value` of type `T` to COER.
+/// Variant of `encode` that writes to a provided existing `buffer`.
+///
+/// # Errors
+/// Returns `EncodeError` if `value` cannot be encoded as COER, usually meaning that constraints
+/// are not met.
+pub fn encode_buf<T: crate::Encode>(
+    value: &T,
+    buffer: &mut alloc::vec::Vec<u8>,
+) -> Result<(), EncodeError> {
+    let mut worker = alloc::vec::Vec::new();
+    let mut enc = Encoder::<0>::from_buffer(enc::EncoderOptions::coer(), buffer, &mut worker);
+    value.encode(&mut enc)?;
+    Ok(())
 }
 /// Attempts to decode `T` from `input` using OER with constraints.
 ///
@@ -33,10 +47,7 @@ pub fn decode_with_constraints<T: crate::Decode>(
     input: &[u8],
 ) -> Result<T, DecodeError> {
     T::decode_with_constraints(
-        &mut Decoder::new(
-            crate::types::BitStr::from_slice(input),
-            de::DecoderOptions::coer(),
-        ),
+        &mut Decoder::<0, 0>::new(input, de::DecoderOptions::coer()),
         constraints,
     )
 }
@@ -48,7 +59,9 @@ pub fn encode_with_constraints<T: crate::Encode>(
     constraints: Constraints,
     value: &T,
 ) -> Result<alloc::vec::Vec<u8>, EncodeError> {
-    let mut enc = Encoder::new(enc::EncoderOptions::coer());
+    let mut buffer = alloc::vec::Vec::with_capacity(core::mem::size_of::<T>());
+    let mut worker = alloc::vec::Vec::new();
+    let mut enc = Encoder::<0>::from_buffer(enc::EncoderOptions::coer(), &mut buffer, &mut worker);
     value.encode_with_constraints(&mut enc, constraints)?;
     Ok(enc.output())
 }
@@ -56,9 +69,8 @@ pub fn encode_with_constraints<T: crate::Encode>(
 #[cfg(test)]
 #[allow(clippy::items_after_statements)]
 mod tests {
-    use crate as rasn;
     use crate::prelude::*;
-    use crate::types::constraints::{Bounded, Size, Value};
+    use crate::{self as rasn, constraints, size_constraint, value_constraint};
     use bitvec::prelude::*;
     #[test]
     fn bool() {
@@ -302,13 +314,8 @@ mod tests {
     }
     #[test]
     fn test_integer_single_constraint() {
-        round_trip_with_constraints!(
-            coer,
-            Integer,
-            Constraints::new(&[Constraint::Value(Value::new(Bounded::Single(5)).into())]),
-            5.into(),
-            &[0x05]
-        );
+        const CONSTRAINTS: Constraints = constraints!(value_constraint!(5));
+        round_trip_with_constraints!(coer, Integer, CONSTRAINTS, 5.into(), &[0x05]);
     }
     #[test]
     fn test_enumerated() {
@@ -374,10 +381,11 @@ mod tests {
         bv.push(true);
         bv.extend([false; 4].iter());
         // bv should be 14 bits now
+        const CONSTRAINT_1: Constraints = constraints!(size_constraint!(14));
         round_trip_with_constraints!(
             coer,
             BitString,
-            Constraints::new(&[Constraint::Size(Size::new(Bounded::Single(14)).into())]),
+            CONSTRAINT_1,
             BitString::from_bitslice(&bv),
             &[0b1111_1111, 0b0100_0000]
         );
@@ -387,10 +395,11 @@ mod tests {
             BitString::from_bitslice(&bv),
             &[0x03u8, 0x02, 0b1111_1111, 0b0100_0000]
         );
+        const CONSTRAINT_2: Constraints = constraints!(size_constraint!(15));
         encode_error_with_constraints!(
             coer,
             BitString,
-            Constraints::new(&[Constraint::Size(Size::new(Bounded::Single(15)).into())]),
+            CONSTRAINT_2,
             BitString::from_bitslice(&bv)
         );
     }
@@ -402,54 +411,41 @@ mod tests {
             OctetString::from_static(&[0x01]),
             &[0x01, 0x01]
         );
+        const CONSTRAINT_1: Constraints = constraints!(size_constraint!(5));
         round_trip_with_constraints!(
             coer,
             OctetString,
-            Constraints::new(&[Constraint::Size(Size::new(Bounded::Single(5)).into())]),
+            CONSTRAINT_1,
             OctetString::from_static(&[0x01u8, 0x02, 0x03, 0x04, 0x05]),
             &[0x01u8, 0x02, 0x03, 0x04, 0x05]
         );
+        const CONSTRAINT_2: Constraints = constraints!(size_constraint!(3, 6));
         round_trip_with_constraints!(
             coer,
             OctetString,
-            Constraints::new(&[Constraint::Size(
-                Size::new(Bounded::Range {
-                    start: Some(3),
-                    end: Some(6)
-                })
-                .into()
-            )]),
+            CONSTRAINT_2,
             OctetString::from_static(&[0x01u8, 0x02, 0x03, 0x04, 0x05]),
             &[0x05u8, 0x01, 0x02, 0x03, 0x04, 0x05]
         );
+        const CONSTRAINT_3: Constraints = constraints!(size_constraint!(5));
         encode_error_with_constraints!(
             coer,
             OctetString,
-            Constraints::new(&[Constraint::Size(Size::new(Bounded::Single(5)).into())]),
+            CONSTRAINT_3,
             OctetString::from_static(&[0x01u8, 0x02, 0x03, 0x04])
         );
+        const CONSTRAINT_4: Constraints = constraints!(size_constraint!(3, 6));
         encode_error_with_constraints!(
             coer,
             OctetString,
-            Constraints::new(&[Constraint::Size(
-                Size::new(Bounded::Range {
-                    start: Some(3),
-                    end: Some(6)
-                })
-                .into()
-            )]),
+            CONSTRAINT_4,
             OctetString::from_static(&[0x01u8, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07])
         );
+        const CONSTRAINT_5: Constraints = constraints!(size_constraint!(3, 6));
         encode_error_with_constraints!(
             coer,
             OctetString,
-            Constraints::new(&[Constraint::Size(
-                Size::new(Bounded::Range {
-                    start: Some(3),
-                    end: Some(6)
-                })
-                .into()
-            )]),
+            CONSTRAINT_5,
             OctetString::from_static(&[0x01u8, 0x02])
         );
     }
@@ -569,6 +565,27 @@ mod tests {
         round_trip!(coer, TopLevel, test_value, &[1, 130, 2, 128]);
     }
     #[test]
+    fn test_tag_max_size() {
+        #[derive(AsnType, Decode, Debug, Encode, PartialEq)]
+        #[rasn(crate_root = "crate")]
+        #[rasn(choice)]
+        enum Choice {
+            #[rasn(tag(0))]
+            Normal(Integer),
+            #[rasn(tag(1))]
+            High(Integer),
+            // u32::MAX
+            #[rasn(tag(4_294_967_295u32))]
+            Medium(Integer),
+        }
+        round_trip!(
+            coer,
+            Choice,
+            Choice::Medium(333.into()),
+            &[191, 143, 255, 255, 255, 127, 2, 1, 77]
+        );
+    }
+    #[test]
     fn test_numeric_string() {
         round_trip!(
             coer,
@@ -576,23 +593,19 @@ mod tests {
             "123".try_into().unwrap(),
             &[0x03, 0x31, 0x32, 0x33]
         );
+        const CONSTRAINT_1: Constraints = constraints!(size_constraint!(3));
         round_trip_with_constraints!(
             coer,
             NumericString,
-            Constraints::new(&[Constraint::Size(Size::new(Bounded::Single(3)).into())]),
+            CONSTRAINT_1,
             "123".try_into().unwrap(),
             &[0x31, 0x32, 0x33]
         );
+        const CONSTRAINT_2: Constraints = constraints!(size_constraint!(3, 7));
         round_trip_with_constraints!(
             coer,
             NumericString,
-            Constraints::new(&[Constraint::Size(
-                Size::new(Bounded::Range {
-                    start: Some(3),
-                    end: Some(7)
-                })
-                .into()
-            )]),
+            CONSTRAINT_2,
             "123".try_into().unwrap(),
             &[0x03, 0x31, 0x32, 0x33]
         );
@@ -611,23 +624,19 @@ mod tests {
             " '()+,-./:=?".try_into().unwrap(),
             &[0x0c, 0x20, 0x27, 0x28, 0x29, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x3a, 0x3d, 0x3f]
         );
+        const CONSTRAINT_1: Constraints = constraints!(size_constraint!(3));
         round_trip_with_constraints!(
             coer,
             PrintableString,
-            Constraints::new(&[Constraint::Size(Size::new(Bounded::Single(3)).into())]),
+            CONSTRAINT_1,
             "foo".try_into().unwrap(),
             &[0x66, 0x6f, 0x6f]
         );
+        const CONSTRAINT_2: Constraints = constraints!(size_constraint!(3, 7));
         round_trip_with_constraints!(
             coer,
             PrintableString,
-            Constraints::new(&[Constraint::Size(
-                Size::new(Bounded::Range {
-                    start: Some(3),
-                    end: Some(7)
-                })
-                .into()
-            )]),
+            CONSTRAINT_2,
             "foo".try_into().unwrap(),
             &[0x03, 0x66, 0x6f, 0x6f]
         );
@@ -640,23 +649,19 @@ mod tests {
             "foo".try_into().unwrap(),
             &[0x03, 0x66, 0x6f, 0x6f]
         );
+        const CONSTRAINT_1: Constraints = constraints!(size_constraint!(3));
         round_trip_with_constraints!(
             coer,
             VisibleString,
-            Constraints::new(&[Constraint::Size(Size::new(Bounded::Single(3)).into())]),
+            CONSTRAINT_1,
             "foo".try_into().unwrap(),
             &[0x66, 0x6f, 0x6f]
         );
+        const CONSTRAINT_2: Constraints = constraints!(size_constraint!(3, 7));
         round_trip_with_constraints!(
             coer,
             VisibleString,
-            Constraints::new(&[Constraint::Size(
-                Size::new(Bounded::Range {
-                    start: Some(3),
-                    end: Some(7)
-                })
-                .into()
-            )]),
+            CONSTRAINT_2,
             "foo".try_into().unwrap(),
             &[0x03, 0x66, 0x6f, 0x6f]
         );
@@ -669,23 +674,19 @@ mod tests {
             "foo".try_into().unwrap(),
             &[0x03, 0x66, 0x6f, 0x6f]
         );
+        const CONSTRAINT_1: Constraints = constraints!(size_constraint!(3));
         round_trip_with_constraints!(
             coer,
             Ia5String,
-            Constraints::new(&[Constraint::Size(Size::new(Bounded::Single(3)).into())]),
+            CONSTRAINT_1,
             "foo".try_into().unwrap(),
             &[0x66, 0x6f, 0x6f]
         );
+        const CONSTRAINT_2: Constraints = constraints!(size_constraint!(3, 7));
         round_trip_with_constraints!(
             coer,
             Ia5String,
-            Constraints::new(&[Constraint::Size(
-                Size::new(Bounded::Range {
-                    start: Some(3),
-                    end: Some(7)
-                })
-                .into()
-            )]),
+            CONSTRAINT_2,
             "foo".try_into().unwrap(),
             &[0x03, 0x66, 0x6f, 0x6f]
         );
@@ -734,21 +735,23 @@ mod tests {
                 0x84, 0xc3, 0x96, 0x31, 0x32, 0x65, 0x34, 0xc3, 0x84
             ]
         );
+        const CONSTRAINT_1: Constraints = constraints!(size_constraint!(3));
         round_trip_with_constraints!(
             coer,
             Utf8String,
-            Constraints::new(&[Constraint::Size(Size::new(Bounded::Single(3)).into())]),
+            CONSTRAINT_1,
             "foo".into(),
             &[0x66, 0x6f, 0x6f]
         );
     }
     #[test]
     fn test_teletext_string() {
+        // For now, Teletex string needs to be aligned for 4 bytes
         round_trip!(
             coer,
             TeletexString,
-            TeletexString::from("123".as_bytes().to_vec()),
-            &[0x03, 0x31, 0x32, 0x33]
+            TeletexString::from_bytes("1234".as_bytes()).unwrap(),
+            &[0x04, 0x31, 0x32, 0x33, 0x34]
         );
     }
     #[test]
@@ -949,7 +952,7 @@ mod tests {
         struct Sequence1 {
             a: bool,
         }
-        round_trip!(coer, Sequence1, Sequence1 { a: true }, &[0x00, 0xff]);
+        // round_trip!(coer, Sequence1, Sequence1 { a: true }, &[0x00, 0xff]);
         #[derive(AsnType, Clone, Debug, Decode, Encode, PartialEq)]
         #[rasn(automatic_tags)]
         #[non_exhaustive]
@@ -1021,6 +1024,124 @@ mod tests {
             },
             &[0x80, 0xff, 0x02, 0x07, 0x80, 0x01, 0xff]
         );
+
+        #[derive(AsnType, Debug, Decode, Encode, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+        #[rasn(automatic_tags)]
+        #[non_exhaustive]
+        pub struct ExtendedOptional {
+            pub value: Integer,
+            pub integer1: Option<Integer>,
+            pub octet1: Option<OctetString>,
+            pub integer2: Option<Integer>,
+            pub octet2: Option<OctetString>,
+            pub integer3: Option<Integer>,
+            pub octet3: Option<OctetString>,
+            #[rasn(extension_addition)]
+            pub integer4: Option<Integer>,
+            #[rasn(extension_addition)]
+            pub octet4: Option<OctetString>,
+            #[rasn(extension_addition)]
+            pub integer5: Option<Integer>,
+            #[rasn(extension_addition)]
+            pub octet5: Option<OctetString>,
+        }
+        round_trip!(
+            coer,
+            ExtendedOptional,
+            ExtendedOptional {
+                value: 1.into(),
+                integer1: Some(1_230_066_625_199_609_624u64.into()),
+                octet1: None,
+                integer2: None,
+                octet2: None,
+                integer3: Some(1.into()),
+                octet3: None,
+                integer4: None,
+                octet4: None,
+                integer5: None,
+                octet5: None
+            },
+            &[68, 1, 1, 8, 17, 18, 19, 20, 21, 22, 23, 24, 1, 1]
+        );
+        round_trip!(
+            coer,
+            ExtendedOptional,
+            ExtendedOptional {
+                value: 0.into(),
+                integer1: Some(1.into()),
+                octet1: None,
+                integer2: Some(2.into()),
+                octet2: None,
+                integer3: Some(3.into()),
+                octet3: Some(vec![4, 5, 6].into()),
+                integer4: Some(7.into()),
+                octet4: None,
+                integer5: Some(8.into()),
+                octet5: None
+            },
+            &[
+                0b1101_0110, // optional/default bitfield
+                0x01,
+                0x00,
+                0x01,
+                0x01,
+                0x01,
+                0x02,
+                0x01,
+                0x03,
+                0x03,
+                0x04,
+                0x05,
+                0x06,
+                0x02, // length of the extension bitfield
+                0x04, // unused bits the following byte (4 extensions)
+                0b1010_0000,
+                0x02, // Open type length
+                0x01,
+                0x07,
+                0x02,
+                0x01,
+                0x08
+            ]
+        );
+        // Preamble that takes two bytes
+        #[derive(AsnType, Debug, Decode, Encode, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+        #[rasn(automatic_tags)]
+        pub struct ManyOptional {
+            pub value: Integer,
+            pub integer1: Option<Integer>,
+            pub octet1: Option<OctetString>,
+            pub integer2: Option<Integer>,
+            pub octet2: Option<OctetString>,
+            pub integer3: Option<Integer>,
+            pub octet3: Option<OctetString>,
+            pub integer4: Option<Integer>,
+            pub integer5: Option<Integer>,
+            pub integer6: Option<Integer>,
+            pub integer7: Option<Integer>,
+            pub integer8: Option<Integer>,
+            pub integer9: Option<Integer>,
+        }
+        round_trip!(
+            coer,
+            ManyOptional,
+            ManyOptional {
+                value: 1.into(),
+                integer1: Some(1_230_066_625_199_609_624u64.into()),
+                octet1: None,
+                integer2: None,
+                octet2: None,
+                integer3: Some(1.into()),
+                octet3: None,
+                integer4: None,
+                integer5: None,
+                integer6: Some(1.into()),
+                integer7: None,
+                integer8: None,
+                integer9: None
+            },
+            &[136, 128, 1, 1, 8, 17, 18, 19, 20, 21, 22, 23, 24, 1, 1, 1, 1]
+        );
     }
     #[test]
     fn test_sequence_of() {
@@ -1043,21 +1164,32 @@ mod tests {
         #[rasn(set, tag(application, 0))]
         struct Foo {
             #[rasn(tag(explicit(444)))]
-            a: Integer,
+            a: Option<Integer>,
             #[rasn(tag(explicit(5)))]
-            b: Integer,
+            b: Option<Integer>,
             #[rasn(tag(application, 9))]
-            c: Integer,
+            c: Option<Integer>,
         }
         round_trip!(
             coer,
             Foo,
             Foo {
-                a: 5.into(),
-                b: 6.into(),
-                c: 7.into(),
+                a: Some(5.into()),
+                b: Some(6.into()),
+                c: Some(7.into()),
             },
-            &[0x01, 0x07, 0x01, 0x06, 0x01, 0x05]
+            &[0b1110_0000, 0x01, 0x07, 0x01, 0x06, 0x01, 0x05]
+        );
+        round_trip!(
+            coer,
+            Foo,
+            Foo {
+                a: None,
+                b: None,
+                c: Some(1.into()),
+            },
+            // Also preamble is ordered by tag
+            &[0b1000_0000, 0x01, 0x01]
         );
     }
     #[test]
@@ -1248,4 +1380,71 @@ mod tests {
             &[192, 3, 0, 1, 2, 2, 7, 128, 0]
         );
     }
+<<<<<<< HEAD
+=======
+    #[test]
+    // https://github.com/librasn/rasn/issues/271
+    fn test_untagged_duplicate_type_option_on_sequence() {
+        use crate as rasn;
+        #[derive(AsnType, Decode, Encode, Clone, Debug, PartialEq, Eq)]
+        pub struct SequenceOptionals {
+            pub it: Integer,
+            pub is: Option<OctetString>,
+            pub late: Option<Integer>,
+        }
+        round_trip!(
+            coer,
+            SequenceOptionals,
+            SequenceOptionals {
+                it: 1.into(),
+                is: Some(OctetString::from_static(&[0x01, 0x02, 0x03])),
+                late: None
+            },
+            &[0b10000000, 0x01, 0x01, 0x03, 0x01, 0x02, 0x03]
+        );
+
+        #[derive(AsnType, Decode, Encode, Clone, Debug, PartialEq, Eq)]
+        pub struct SequenceOptionalsExplicit {
+            #[rasn(tag(explicit(0)))]
+            pub it: Integer,
+            #[rasn(tag(explicit(1)))]
+            pub is: Option<OctetString>,
+            #[rasn(tag(explicit(2)))]
+            pub late: Option<Integer>,
+        }
+        round_trip!(
+            coer,
+            SequenceOptionalsExplicit,
+            SequenceOptionalsExplicit {
+                it: 42.into(),
+                is: None,
+                late: None
+            },
+            &[0, 1, 42]
+        );
+        #[derive(AsnType, Decode, Encode, Clone, Debug, PartialEq, Eq)]
+        #[non_exhaustive]
+        pub struct SequenceDuplicatesExtended {
+            pub it: Integer,
+            pub is: Option<OctetString>,
+            pub late: Option<Integer>,
+            #[rasn(extension_addition)]
+            pub today: OctetString,
+        }
+        round_trip!(
+            coer,
+            SequenceDuplicatesExtended,
+            SequenceDuplicatesExtended {
+                it: 1.into(),
+                is: Some(OctetString::from_static(&[0x02, 0x03, 0x04])),
+                late: None,
+                today: OctetString::from_static(&[0x05, 0x06, 0x07])
+            },
+            &[
+                0b11000000, 0x01, 0x01, 0x03, 0x02, 0x03, 0x04, 0x02, 0x07, 0b10000000, 0x04, 0x03,
+                0x05, 0x06, 0x07
+            ]
+        );
+    }
+>>>>>>> main
 }

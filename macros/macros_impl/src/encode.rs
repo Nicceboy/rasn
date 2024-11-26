@@ -8,12 +8,36 @@ pub fn derive_struct_impl(
 ) -> proc_macro2::TokenStream {
     let crate_root = &config.crate_root;
 
-    let list: Vec<_> = container
-        .fields
+    let mut field_encodings = Vec::with_capacity(container.fields.len());
+    let mut number_root_fields: usize = 0;
+    let mut number_extended_fields: usize = 0;
+    let type_params: Vec<_> = generics
+        .params
         .iter()
-        .enumerate()
-        .map(|(i, field)| FieldConfig::new(field, config).encode(i, true))
+        .filter_map(|param| {
+            if let syn::GenericParam::Type(type_param) = param {
+                Some(type_param.ident.clone())
+            } else {
+                None
+            }
+        })
         .collect();
+
+    // Count the number of root and extended fields so that encoder can know the number of fields in advance
+    for (i, field) in container.fields.iter().enumerate() {
+        let field_config = FieldConfig::new(field, config);
+        let field_encoding = field_config.encode(i, true, &type_params);
+
+        if field_config.is_extension() {
+            number_extended_fields += 1;
+        } else {
+            number_root_fields += 1;
+        }
+
+        field_encodings.push(quote! {
+            #field_encoding
+        });
+    }
 
     generics.add_trait_bounds(crate_root, quote::format_ident!("Encode"));
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
@@ -23,20 +47,23 @@ pub fn derive_struct_impl(
 
         if let Some(tag) = config.tag.as_ref().filter(|tag| tag.is_explicit()) {
             let tag = tag.to_tokens(crate_root);
-            let encode = quote!(encoder.encode_explicit_prefix(#tag, &self.0).map(drop));
-            if config.option_type.is_option_type(ty) {
+            // Note: encoder must be aware if the field is optional and present, so we should not do the presence check on this level
+            quote!(encoder.encode_explicit_prefix(#tag, &self.0).map(drop))
+        } else {
+            let constraint_name = quote::format_ident!("effective_constraint");
+            let constraint_def = if generics.params.is_empty() {
                 quote! {
-                    if &self.0.is_some() {
-                        #encode
-                    }
+                    let #constraint_name: #crate_root::types::Constraints  = const {<#ty as #crate_root::AsnType>::CONSTRAINTS}.intersect(constraints);
                 }
             } else {
-                encode
-            }
-        } else {
+                quote! {
+                    let #constraint_name: #crate_root::types::Constraints  = <#ty as #crate_root::AsnType>::CONSTRAINTS.intersect(constraints);
+                }
+            };
             quote!(
+                #constraint_def
                 match tag {
-                    #crate_root::Tag::EOC => {
+                    #crate_root::types::Tag::EOC => {
                         self.0.encode(encoder)
                     }
                     _ => {
@@ -44,7 +71,7 @@ pub fn derive_struct_impl(
                             &self.0,
                             encoder,
                             tag,
-                            <#ty as #crate_root::AsnType>::CONSTRAINTS.override_constraints(constraints)
+                            #constraint_name
                         )
                     }
                 }
@@ -57,9 +84,9 @@ pub fn derive_struct_impl(
             .unwrap_or_else(|| quote!(encode_sequence));
 
         let encode_impl = quote! {
-            encoder.#operation::<Self, _>(tag, |encoder| {
-                #(#list)*
-
+            // In order to avoid unnecessary allocations, we provide the constant field counts to the encoder when encoding sequences and sets.
+            encoder.#operation::<#number_root_fields, #number_extended_fields, Self, _>(tag, |encoder| {
+                #(#field_encodings)*
                 Ok(())
             }).map(drop)
         };
@@ -82,7 +109,7 @@ pub fn derive_struct_impl(
     quote! {
         #[allow(clippy::mutable_key_type)]
         impl #impl_generics  #crate_root::Encode for #name #ty_generics #where_clause {
-            fn encode_with_tag_and_constraints<'constraints, EN: #crate_root::Encoder>(&self, encoder: &mut EN, tag: #crate_root::Tag, constraints: #crate_root::types::Constraints<'constraints>) -> core::result::Result<(), EN::Error> {
+            fn encode_with_tag_and_constraints<'encoder, EN: #crate_root::Encoder<'encoder>>(&self, encoder: &mut EN, tag: #crate_root::types::Tag, constraints: #crate_root::types::Constraints) -> core::result::Result<(), EN::Error> {
                 #(#vars)*
 
                 #encode_impl
@@ -107,7 +134,7 @@ pub fn map_to_inner_type(
     );
     inner_generics
         .params
-        .push(syn::LifetimeDef::new(lifetime.clone()).into());
+        .push(syn::LifetimeParam::new(lifetime.clone()).into());
 
     let (field_defs, init_fields) = match &fields {
         syn::Fields::Named(_) => {

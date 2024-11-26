@@ -2,6 +2,7 @@
 
 use alloc::string::ToString;
 
+use rasn::macros::*;
 use rasn::prelude::*;
 
 use crate::v1::InvalidVariant;
@@ -70,16 +71,17 @@ pub enum ApplicationSyntax {
 pub struct ExtUtcTime(pub chrono::DateTime<chrono::Utc>);
 
 impl Encode for ExtUtcTime {
-    fn encode_with_tag_and_constraints<EN: Encoder>(
+    fn encode_with_tag_and_constraints<'encoder, EN: Encoder<'encoder>>(
         &self,
         encoder: &mut EN,
         tag: Tag,
         _: Constraints,
     ) -> Result<(), EN::Error> {
+        const CONSTRAINT_1: constraints::Constraints = constraints!(value_constraint!(13));
         encoder
             .encode_octet_string(
                 tag,
-                <_>::from(&[constraints::Size::new(constraints::Bounded::single_value(13)).into()]),
+                CONSTRAINT_1,
                 self.0.format(FULL_DATE_FORMAT).to_string().as_bytes(),
             )
             .map(drop)

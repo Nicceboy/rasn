@@ -2,8 +2,8 @@
 
 use rasn::{
     error::EncodeError,
-    types::{Constraints, FixedOctetString, Integer, ObjectIdentifier, OctetString, Oid},
-    AsnType, Decode, Encode, Tag,
+    types::{Constraints, FixedOctetString, Integer, ObjectIdentifier, OctetString, Oid, Tag},
+    AsnType, Decode, Encode,
 };
 
 pub const INTERNET: &Oid = Oid::ISO_IDENTIFIED_ORGANISATION_DOD_INTERNET;
@@ -99,7 +99,7 @@ impl Decode for Opaque {
 }
 
 impl Encode for Opaque {
-    fn encode_with_tag_and_constraints<EN: rasn::Encoder>(
+    fn encode_with_tag_and_constraints<'encoder, EN: rasn::Encoder<'encoder>>(
         &self,
         encoder: &mut EN,
         tag: Tag,

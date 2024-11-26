@@ -6,6 +6,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0](https://github.com/librasn/rasn/compare/rasn-pkix-v0.20.2...rasn-pkix-v0.21.0) - 2024-11-12
+
+### Added
+
+- Implement Algorithms and Identifiers PKIX module
+
+### Fixed
+
+- fmt
+- Fix most issues related to dependency update, except hashbrown version ([#349](https://github.com/librasn/rasn/pull/349))
+
+### Other
+
+- Optimize field presence tracking of default/optional/extended fields ([#324](https://github.com/librasn/rasn/pull/324))
+- update dependencies
+
+## [0.20.2](https://github.com/librasn/rasn/compare/rasn-pkix-v0.20.1...rasn-pkix-v0.20.2) - 2024-10-18
+
+### Fixed
+
+- Run clippy and rustdoc only on stable channel in CI ([#342](https://github.com/librasn/rasn/pull/342))
+
+## [0.18.0](https://github.com/librasn/rasn/compare/rasn-pkix-v0.17.3...rasn-pkix-v0.18.0) - 2024-09-17
+
+### Added
+
+- [**breaking**] Rework for SetOf type ([#325](https://github.com/librasn/rasn/pull/325))
+- Constraint utilities, const default, more const functions ([#321](https://github.com/librasn/rasn/pull/321))
+
+## [0.17.3](https://github.com/librasn/rasn/compare/rasn-pkix-v0.17.2...rasn-pkix-v0.17.3) - 2024-09-12
+
+### Other
+
+- update Cargo.toml dependencies
+
+## [0.17.0](https://github.com/librasn/rasn/compare/rasn-pkix-v0.16.6...rasn-pkix-v0.17.0) - 2024-09-05
+
+### Added
+- [**breaking**] `Integer` as enum type and optimized constrained and variable-sized integer encoding ([#289](https://github.com/librasn/rasn/pull/289))
+
 ## [0.10.6](https://github.com/XAMPPRocky/rasn/compare/rasn-pkix-v0.10.5...rasn-pkix-v0.10.6) - 2023-10-26
 
 ### Other

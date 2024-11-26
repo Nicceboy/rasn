@@ -1,13 +1,20 @@
-use crate::prelude::*;
+use crate::{
+    macros::{constraints, size_constraint},
+    prelude::*,
+};
 
 use alloc::vec::Vec;
 
 pub use bytes::Bytes as OctetString;
 
+/// An `OCTET STRING` which has a fixed size range. This type uses const
+/// generics to be able to place the octet string on the stack rather than the
+/// heap.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FixedOctetString<const N: usize>([u8; N]);
 
 impl<const N: usize> FixedOctetString<N> {
+    /// Creates a new octet string from a given array.
     pub fn new(value: [u8; N]) -> Self {
         Self(value)
     }
@@ -59,9 +66,7 @@ impl<const N: usize> core::ops::DerefMut for FixedOctetString<N> {
 
 impl<const N: usize> AsnType for FixedOctetString<N> {
     const TAG: Tag = Tag::OCTET_STRING;
-    const CONSTRAINTS: Constraints<'static> = Constraints::new(&[Constraint::Size(
-        Extensible::new(constraints::Size::fixed(N)),
-    )]);
+    const CONSTRAINTS: Constraints = constraints!(size_constraint!(N));
 }
 
 impl<const N: usize> Decode for FixedOctetString<N> {
@@ -70,23 +75,29 @@ impl<const N: usize> Decode for FixedOctetString<N> {
         tag: Tag,
         constraints: Constraints,
     ) -> Result<Self, D::Error> {
-        decoder
-            .decode_octet_string(tag, constraints)?
-            .try_into()
-            .map(Self)
-            .map_err(|vec| {
+        let codec = decoder.codec();
+        let bytes = decoder.decode_octet_string::<alloc::borrow::Cow<[u8]>>(tag, constraints)?;
+        let len = bytes.len();
+        match bytes {
+            alloc::borrow::Cow::Borrowed(slice) => Self::try_from(slice).map_err(|_| {
                 D::Error::from(crate::error::DecodeError::fixed_string_conversion_failed(
-                    Tag::OCTET_STRING,
-                    vec.len(),
+                    tag,
+                    bytes.len(),
                     N,
-                    decoder.codec(),
+                    codec,
                 ))
-            })
+            }),
+            alloc::borrow::Cow::Owned(vec) => Self::try_from(vec).map_err(|_| {
+                D::Error::from(crate::error::DecodeError::fixed_string_conversion_failed(
+                    tag, len, N, codec,
+                ))
+            }),
+        }
     }
 }
 
 impl<const N: usize> Encode for FixedOctetString<N> {
-    fn encode_with_tag_and_constraints<E: Encoder>(
+    fn encode_with_tag_and_constraints<'b, E: Encoder<'b>>(
         &self,
         encoder: &mut E,
         tag: Tag,

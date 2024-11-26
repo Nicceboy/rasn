@@ -13,17 +13,22 @@ pub mod constraints;
 pub mod fields;
 pub mod variants;
 
+pub(crate) mod constructed;
+pub(crate) mod date;
+pub(crate) mod integer;
 pub(crate) mod oid;
 pub(crate) mod strings;
 
+use crate::macros::{constraints, size_constraint, value_constraint};
 use alloc::boxed::Box;
-use num_bigint::BigUint;
 
 pub use {
     self::{
         any::Any,
         constraints::{Constraint, Constraints, Extensible},
+        constructed::{Constructed, SequenceOf, SetOf},
         instance::InstanceOf,
+        integer::{ConstrainedInteger, Integer, IntegerType},
         oid::{ObjectIdentifier, Oid},
         open::Open,
         prefix::{Explicit, Implicit},
@@ -34,43 +39,17 @@ pub use {
         },
         tag::{Class, Tag, TagTree},
     },
-    num_bigint::BigInt as Integer,
     rasn_derive::AsnType,
 };
 
-///  The `SET OF` type.
-pub type SetOf<T> = alloc::collections::BTreeSet<T>;
 ///  The `UniversalString` type.
 pub type UniversalString = Implicit<tag::UNIVERSAL_STRING, Utf8String>;
 ///  The `UTCTime` type.
 pub type UtcTime = chrono::DateTime<chrono::Utc>;
 ///  The `GeneralizedTime` type.
 pub type GeneralizedTime = chrono::DateTime<chrono::FixedOffset>;
-///  The `SEQUENCE OF` type.
-/// ## Usage
-/// ASN1 declaration such as ...
-/// ```asn
-/// Test-type-a ::= SEQUENCE OF BOOLEAN
-/// Test-type-b ::= SEQUENCE OF INTEGER(1,...)
-/// ```
-/// ... can be represented using `rasn` as ...
-/// ```rust
-/// use rasn::prelude::*;
-///
-/// #[derive(AsnType, Decode, Encode)]
-/// #[rasn(delegate)]
-/// struct TestTypeA(pub SequenceOf<bool>);
-///
-/// // Constrained inner primitive types need to be wrapped in a helper newtype
-/// #[derive(AsnType, Decode, Encode)]
-/// #[rasn(delegate, value("1", extensible))]
-/// struct InnerTestTypeB(pub Integer);
-///  
-/// #[derive(AsnType, Decode, Encode)]
-/// #[rasn(delegate)]
-/// struct TestTypeB(pub SequenceOf<InnerTestTypeB>);
-/// ```
-pub type SequenceOf<T> = alloc::vec::Vec<T>;
+/// The `Date` type.
+pub type Date = chrono::NaiveDate;
 
 /// A trait representing any type that can represented in ASN.1.
 pub trait AsnType {
@@ -84,25 +63,27 @@ pub trait AsnType {
     /// `Leaf` that points [`Self::TAG`].
     const TAG_TREE: TagTree = TagTree::Leaf(Self::TAG);
 
-    const CONSTRAINTS: Constraints<'static> = Constraints::NONE;
+    /// The set of constraints for values of the given type.
+    const CONSTRAINTS: Constraints = Constraints::NONE;
 
     /// Identifier of an ASN.1 type as specified in the original specification
     /// if not identical with the identifier of `Self`
     const IDENTIFIER: Option<&'static str> = None;
-}
 
-/// A `SET` or `SEQUENCE` value.
-pub trait Constructed {
-    /// Fields contained in the "root component list".
-    const FIELDS: self::fields::Fields;
-    /// Fields contained in the list of extensions.
-    const EXTENDED_FIELDS: Option<self::fields::Fields> = None;
+    /// Whether the type is present with value. `OPTIONAL` fields are common in `SEQUENCE` or `SET`.
+    ///
+    /// Custom implementation is only used for `OPTIONAL` type.
+    fn is_present(&self) -> bool {
+        true
+    }
 }
 
 /// A `CHOICE` value.
 pub trait Choice: Sized {
     /// Variants contained in the "root component list".
     const VARIANTS: &'static [TagTree];
+    /// Constraint for the choice type, based on the number of root components. Used for PER encoding.
+    const VARIANCE_CONSTRAINT: Constraints;
     /// Variants contained in the list of extensions.
     const EXTENDED_VARIANTS: Option<&'static [TagTree]> = None;
     /// Variant identifiers for text-based encoding rules
@@ -238,34 +219,6 @@ pub trait Enumerated: Sized + 'static + PartialEq + Copy + core::fmt::Debug {
     }
 }
 
-/// A integer which has encoded constraint range between `START` and `END`.
-#[derive(Debug, Clone, Eq, Hash, PartialEq, PartialOrd, Ord)]
-pub struct ConstrainedInteger<const START: i128, const END: i128>(pub(crate) Integer);
-
-impl<const START: i128, const END: i128> AsnType for ConstrainedInteger<START, END> {
-    const TAG: Tag = Tag::INTEGER;
-    const CONSTRAINTS: Constraints<'static> =
-        Constraints::new(&[constraints::Constraint::Value(Extensible::new(
-            constraints::Value::new(constraints::Bounded::const_new(START, END)),
-        ))]);
-}
-
-impl<const START: i128, const END: i128> core::ops::Deref for ConstrainedInteger<START, END> {
-    type Target = Integer;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T: Into<Integer>, const START: i128, const END: i128> From<T>
-    for ConstrainedInteger<START, END>
-{
-    fn from(value: T) -> Self {
-        Self(value.into())
-    }
-}
-
 macro_rules! asn_type {
     ($($name:ty: $value:ident),+) => {
         $(
@@ -295,9 +248,7 @@ macro_rules! asn_integer_type {
         $(
             impl AsnType for $int {
                 const TAG: Tag = Tag::INTEGER;
-                const CONSTRAINTS: Constraints<'static> = Constraints::new(&[
-                    constraints::Constraint::Value(Extensible::new(constraints::Value::new(constraints::Bounded::const_new(<$int>::MIN as i128, <$int>::MAX as i128)))),
-                ]);
+                const CONSTRAINTS: Constraints = constraints!(value_constraint!((<$int>::MIN as i128), (<$int>::MAX as i128)));
             }
         )+
     }
@@ -314,205 +265,11 @@ asn_integer_type! {
     u16,
     u32,
     u64,
-    u128,
+    u128, // TODO upper constraint truncated
     usize,
 }
-
-pub trait IntegerType:
-    Sized
-    + Clone
-    + core::fmt::Debug
-    + TryFrom<i64>
-    + TryFrom<i128>
-    + TryInto<i128>
-    + Into<Integer>
-    + num_traits::Num
-    + num_traits::CheckedAdd
-{
-    const WIDTH: u32;
-
-    fn try_from_bytes(input: &[u8], codec: crate::Codec)
-        -> Result<Self, crate::error::DecodeError>;
-
-    fn try_from_signed_bytes(
-        input: &[u8],
-        codec: crate::Codec,
-    ) -> Result<Self, crate::error::DecodeError>;
-
-    fn try_from_unsigned_bytes(
-        input: &[u8],
-        codec: crate::Codec,
-    ) -> Result<Self, crate::error::DecodeError>;
-
-    // `num_traits::WrappingAdd` is not implemented for `BigInt`
-    #[doc(hidden)]
-    fn wrapping_add(self, other: Self) -> Self;
-}
-
-macro_rules! integer_type_decode {
-    ((signed $t1:ty, $t2:ty), $($ts:tt)*) => {
-        impl IntegerType for $t1 {
-            const WIDTH: u32 = <$t1>::BITS;
-
-            fn try_from_bytes(
-                input: &[u8],
-                codec: crate::Codec,
-            ) -> Result<Self, crate::error::DecodeError> {
-                Self::try_from_signed_bytes(input, codec)
-            }
-
-            fn try_from_signed_bytes(
-                input: &[u8],
-                codec: crate::Codec,
-            ) -> Result<Self, crate::error::DecodeError> {
-                const BYTE_SIZE: usize = (<$t1>::BITS / 8) as usize;
-                if input.is_empty() {
-                    return Err(crate::error::DecodeError::unexpected_empty_input(codec));
-                }
-
-                // in the case of superfluous leading bytes (especially zeroes),
-                // we may still want to try to decode the integer even though
-                // the length is >BYTE_SIZE ...
-                let leading_byte = if input[0] & 0x80 == 0x80 { 0xFF } else { 0x00 };
-                let input_iter = input.iter().copied().skip_while(|n| *n == leading_byte);
-                let data_length = input_iter.clone().count();
-
-                // ... but if its still too large after skipping leading bytes,
-                // there's no way to decode this without overflowing
-                if data_length > BYTE_SIZE {
-                    return Err(crate::error::DecodeError::integer_overflow(<$t1>::BITS, codec));
-                }
-
-                let mut bytes = [leading_byte; BYTE_SIZE];
-                let start = bytes.len() - data_length;
-
-                for (b, d) in bytes[start..].iter_mut().zip(input_iter) {
-                    *b = d;
-                }
-
-                Ok(Self::from_be_bytes(bytes))
-            }
-
-            fn try_from_unsigned_bytes(
-                input: &[u8],
-                codec: crate::Codec,
-            ) -> Result<Self, crate::error::DecodeError> {
-                Ok(<$t2>::try_from_bytes(input, codec)? as $t1)
-            }
-
-            fn wrapping_add(self, other: Self) -> Self {
-                self.wrapping_add(other)
-            }
-        }
-
-        integer_type_decode!($($ts)*);
-    };
-    ((unsigned $t1:ty, $t2:ty), $($ts:tt)*) => {
-        impl IntegerType for $t1 {
-            const WIDTH: u32 = <$t1>::BITS;
-
-            fn try_from_bytes(
-                input: &[u8],
-                codec: crate::Codec,
-            ) -> Result<Self, crate::error::DecodeError> {
-                Self::try_from_unsigned_bytes(input, codec)
-            }
-
-            fn try_from_signed_bytes(
-                input: &[u8],
-                codec: crate::Codec,
-            ) -> Result<Self, crate::error::DecodeError> {
-                Ok(<$t2>::try_from_bytes(input, codec)? as $t1)
-            }
-
-            fn try_from_unsigned_bytes(
-                input: &[u8],
-                codec: crate::Codec,
-            ) -> Result<Self, crate::error::DecodeError> {
-                const BYTE_SIZE: usize = (<$t1>::BITS / 8) as usize;
-                if input.is_empty() {
-                    return Err(crate::error::DecodeError::unexpected_empty_input(codec));
-                }
-
-                let input_iter = input.iter().copied().skip_while(|n| *n == 0x00);
-                let data_length = input_iter.clone().count();
-
-                if data_length > BYTE_SIZE {
-                    return Err(crate::error::DecodeError::integer_overflow(<$t1>::BITS, codec));
-                }
-
-                let mut bytes = [0x00; BYTE_SIZE];
-                let start = bytes.len() - data_length;
-
-                for (b, d) in bytes[start..].iter_mut().zip(input_iter) {
-                    *b = d;
-                }
-
-
-                Ok(Self::from_be_bytes(bytes))
-            }
-
-            fn wrapping_add(self, other: Self) -> Self {
-                self.wrapping_add(other)
-            }
-        }
-
-        integer_type_decode!($($ts)*);
-    };
-    (,) => {};
-    () => {};
-}
-
-integer_type_decode!(
-    (unsigned u8, i8),
-    (signed i8, u8),
-    (unsigned u16, i16),
-    (signed i16, u16),
-    (unsigned u32, i32),
-    (signed i32, u32),
-    (unsigned u64, i64),
-    (signed i64, u64),
-    (unsigned u128, i128),
-    (signed i128, u128),
-    (unsigned usize, isize),
-    (signed isize, usize),
-);
-
-impl IntegerType for Integer {
-    const WIDTH: u32 = u32::MAX;
-
-    fn try_from_bytes(
-        input: &[u8],
-        codec: crate::Codec,
-    ) -> Result<Self, crate::error::DecodeError> {
-        if input.is_empty() {
-            return Err(crate::error::DecodeError::unexpected_empty_input(codec));
-        }
-
-        Ok(Integer::from_signed_bytes_be(input))
-    }
-
-    fn try_from_signed_bytes(
-        input: &[u8],
-        codec: crate::Codec,
-    ) -> Result<Self, crate::error::DecodeError> {
-        Self::try_from_bytes(input, codec)
-    }
-
-    fn try_from_unsigned_bytes(
-        input: &[u8],
-        codec: crate::Codec,
-    ) -> Result<Self, crate::error::DecodeError> {
-        if input.is_empty() {
-            return Err(crate::error::DecodeError::unexpected_empty_input(codec));
-        }
-
-        Ok(BigUint::from_bytes_be(input).into())
-    }
-
-    fn wrapping_add(self, other: Self) -> Self {
-        self + other
-    }
+impl AsnType for num_bigint::BigInt {
+    const TAG: Tag = Tag::INTEGER;
 }
 
 impl AsnType for str {
@@ -522,6 +279,10 @@ impl AsnType for str {
 impl<T: AsnType> AsnType for &'_ T {
     const TAG: Tag = T::TAG;
     const TAG_TREE: TagTree = T::TAG_TREE;
+
+    fn is_present(&self) -> bool {
+        (*self).is_present()
+    }
 }
 
 impl<T: AsnType> AsnType for Box<T> {
@@ -536,18 +297,19 @@ impl<T: AsnType> AsnType for alloc::vec::Vec<T> {
 impl<T: AsnType> AsnType for Option<T> {
     const TAG: Tag = T::TAG;
     const TAG_TREE: TagTree = T::TAG_TREE;
+
+    fn is_present(&self) -> bool {
+        self.is_some()
+    }
 }
 
-impl<T> AsnType for alloc::collections::BTreeSet<T> {
+impl<T> AsnType for SetOf<T> {
     const TAG: Tag = Tag::SET;
 }
 
 impl<T: AsnType, const N: usize> AsnType for [T; N] {
     const TAG: Tag = Tag::SEQUENCE;
-    const CONSTRAINTS: Constraints<'static> =
-        Constraints::new(&[Constraint::Size(Extensible::new(constraints::Size::new(
-            constraints::Bounded::single_value(N),
-        )))]);
+    const CONSTRAINTS: Constraints = constraints!(size_constraint!(N));
 }
 
 impl<T> AsnType for &'_ [T] {
