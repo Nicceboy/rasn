@@ -1,6 +1,6 @@
 #![doc = include_str!("../README.md")]
 #![cfg_attr(not(test), no_std)]
-#![warn(missing_docs)]
+// #![warn(missing_docs)]
 
 extern crate alloc;
 
@@ -12,6 +12,7 @@ mod codec;
 pub mod de;
 pub mod enc;
 pub mod error;
+pub mod examples;
 mod num;
 mod per;
 pub mod types;

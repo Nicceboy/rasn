@@ -45,7 +45,6 @@ pub(crate) trait StaticPermittedAlphabet: Sized + Default {
     const CHARACTER_SET_WIDTH: usize = crate::num::log2(Self::CHARACTER_SET.len() as i128) as usize;
     const CHARACTER_SET_NAME: CharacterSetName;
 
-    fn alphabet_name() -> &'static str;
     fn push_char(&mut self, ch: u32);
     fn chars(&self) -> impl Iterator<Item = u32> + '_;
     fn contains_char(ch: u32) -> bool {

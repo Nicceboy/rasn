@@ -7,9 +7,10 @@ description = "Something someday."
 license = "MIT OR Apache-2.0"
 publish = false
 
+[workspace]
 
 [dependencies]
-rasn = { path = "..", default-features = false, features = ["macros"] }
+rasn = { path = "..", default-features = false }
 #rasn-snmp = { path = "../standards/snmp" }
 rasn-smi = { path = "../standards/smi" }
 afl = "0.15.5"

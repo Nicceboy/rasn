@@ -1380,8 +1380,6 @@ mod tests {
             &[192, 3, 0, 1, 2, 2, 7, 128, 0]
         );
     }
-<<<<<<< HEAD
-=======
     #[test]
     // https://github.com/librasn/rasn/issues/271
     fn test_untagged_duplicate_type_option_on_sequence() {
@@ -1446,5 +1444,4 @@ mod tests {
             ]
         );
     }
->>>>>>> main
 }

@@ -31,13 +31,13 @@ impl log::Log for CodecLogger {
     }
     fn flush(&self) {}
 }
-#[cfg(debug_assertions)]
+// #[cfg(debug_assertions)]
 fn debug_bytes(data: &[u8], codec: &str) {
     debug!("{codec} encoded data in decimal array: {:?}", data);
     let in_binary: Vec<String> = data.iter().map(|v| format!("0b{:08b}", v)).collect();
     debug!("{codec} encoded data in binary array: {:?}", in_binary);
 }
-#[cfg(debug_assertions)]
+// #[cfg(debug_assertions)]
 fn debug_object<T: std::fmt::Debug>(data: T, codec: &str) {
     // debug!(data:?; "{codec} decoded data");
     debug!("{data:?} {codec} decoded data");

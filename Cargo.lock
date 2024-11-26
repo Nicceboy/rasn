@@ -906,50 +906,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rasn-atn-cpdlc"
-version = "0.22.0"
-dependencies = [
- "rasn",
-]
-
-[[package]]
-name = "rasn-atn-ulcs"
-version = "0.22.0"
-dependencies = [
- "rasn",
-]
-
-[[package]]
-name = "rasn-cap"
-version = "0.22.0"
-dependencies = [
- "rasn",
-]
-
-[[package]]
-name = "rasn-cbr"
-version = "0.22.0"
-dependencies = [
- "rasn",
-]
-
-[[package]]
-name = "rasn-cdt"
-version = "0.22.0"
-dependencies = [
- "rasn",
-]
-
-[[package]]
-name = "rasn-cms"
-version = "0.22.0"
-dependencies = [
- "pretty_assertions",
- "rasn",
- "rasn-pkix",
-]
-
-[[package]]
 name = "rasn-compiler"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -961,13 +917,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "rasn-credssp"
-version = "0.22.0"
-dependencies = [
- "rasn",
 ]
 
 [[package]]
@@ -992,45 +941,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rasn-h282"
-version = "0.22.0"
-dependencies = [
- "rasn",
-]
-
-[[package]]
-name = "rasn-kerberos"
-version = "0.22.0"
-dependencies = [
- "pretty_assertions",
- "rasn",
- "rasn-pkix",
-]
-
-[[package]]
-name = "rasn-ldap"
-version = "0.22.0"
-dependencies = [
- "rasn",
-]
-
-[[package]]
-name = "rasn-mib"
-version = "0.22.0"
-dependencies = [
- "rasn",
- "rasn-smi",
-]
-
-[[package]]
-name = "rasn-ocsp"
-version = "0.22.0"
-dependencies = [
- "rasn",
- "rasn-pkix",
-]
-
-[[package]]
 name = "rasn-pkix"
 version = "0.22.0"
 dependencies = [
@@ -1040,33 +950,6 @@ dependencies = [
  "pem",
  "pretty_assertions",
  "rasn",
-]
-
-[[package]]
-name = "rasn-smi"
-version = "0.22.0"
-dependencies = [
- "chrono",
- "rasn",
-]
-
-[[package]]
-name = "rasn-smime"
-version = "0.22.0"
-dependencies = [
- "rasn",
- "rasn-cms",
- "rasn-pkix",
-]
-
-[[package]]
-name = "rasn-snmp"
-version = "0.22.0"
-dependencies = [
- "hex",
- "pretty_assertions",
- "rasn",
- "rasn-smi",
 ]
 
 [[package]]
