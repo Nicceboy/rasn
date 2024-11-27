@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.1](https://github.com/Nicceboy/rasn/compare/rasn-v0.22.0...rasn-v0.22.1) - 2024-11-27
+
+### Other
+
+- Remove trails of BitSlice and unnecessary length checks ([#381](https://github.com/Nicceboy/rasn/pull/381))
+- use shifting to construct primitive integers ([#379](https://github.com/Nicceboy/rasn/pull/379))
+
 ## [0.21.0](https://github.com/librasn/rasn/compare/rasn-v0.20.2...rasn-v0.21.0) - 2024-11-12
 
 ### Added
