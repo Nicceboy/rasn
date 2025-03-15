@@ -8,6 +8,10 @@ license.workspace = true
 keywords = ["asn1", "der", "ber", "cer", "per"]
 repository.workspace = true
 
+[profile.dev.package]
+insta.opt-level = 3
+similar.opt-level = 3
+
 [dependencies]
 syn = { version = "2.0.79", features = ["extra-traits"] }
 quote = "1.0.37"
@@ -15,3 +19,7 @@ proc-macro2 = "1.0.88"
 itertools = "0.13"
 uuid = { version = "1.11.0", default-features = false, features = ["v4"] }
 either = { version = "1.13.0", default-features = false }
+
+[dev-dependencies]
+insta = { version = "1.42.2" }
+prettyplease = "0.2.31"

@@ -33,13 +33,13 @@ pub enum InnerSubtypeConstraintError {
     },
 
     /// Subtype constraint violation: mutually exclusive components are present
-    #[snafu(display("Mutually exclusive components present in {type_name}: {components:?}"))]
-    MutuallyExclusiveViolation {
-        /// The name of the type where the mutually exclusive components are present.
-        type_name: &'static str,
-        /// List of mutually exclusive components that are present.
-        components: &'static [&'static str],
-    },
+    // #[snafu(display("Mutually exclusive components present in {type_name}: {components:?}"))]
+    // MutuallyExclusiveViolation {
+    //     /// The name of the type where the mutually exclusive components are present.
+    //     type_name: &'static str,
+    //     /// List of mutually exclusive components that are present.
+    //     components: &'static [&'static str],
+    // },
     /// Invalid value for a component
     #[snafu(display("Invalid value for component {component_name} in {type_name}: {details}"))]
     InvalidComponentValue {
@@ -49,5 +49,15 @@ pub enum InnerSubtypeConstraintError {
         component_name: &'static str,
         /// Detailed information about the invalid component value.
         details: alloc::string::String,
+    },
+    /// A field that should be absent is present
+    #[snafu(display(
+        "Component that should be absent is present in {type_name}: {component_name}"
+    ))]
+    UnexpectedComponentPresent {
+        /// The name of the type where the absent component is present.
+        type_name: &'static str,
+        /// The name of the absent component that is present.
+        component_name: &'static str,
     },
 }

@@ -1,0 +1,28 @@
+---
+source: macros/macros_impl/src/component_constraints.rs
+assertion_line: 498
+expression: formatted
+---
+impl InnerSubtypeConstraint for TestStruct {
+    fn validate_components(self) -> Result<Self, InnerSubtypeConstraintError> {
+        let __constraint_data_ok = if self.data.is_some() { true } else { false };
+        let __constraint_ext_data_hash_ok = if self.ext_data_hash.is_some() {
+            true
+        } else {
+            false
+        };
+        let __constraint_omitted_ok = if self.omitted.is_some() { true } else { false };
+        if !(__constraint_data_ok || __constraint_ext_data_hash_ok
+            || __constraint_omitted_ok)
+        {
+            return Err(InnerSubtypeConstraintError::InvalidCombination {
+                type_name: stringify!(TestStruct),
+                details: concat!(
+                    "At least one of the inner subtype constraints must be met for ",
+                    stringify!(TestStruct)
+                ),
+            });
+        }
+        Ok(self)
+    }
+}

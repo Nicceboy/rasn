@@ -7,7 +7,7 @@ version.workspace = true
 repository.workspace = true
 
 [dependencies]
-bon = { version = "3.1.1", default-features = false }
+bon = { version = "3.4", default-features = false }
 rasn = { version = "0.25", path = "../.." }
 
 [dev-dependencies]

@@ -2,6 +2,7 @@
 extern crate quote;
 
 mod asn_type;
+mod component_constraints;
 mod config;
 mod decode;
 mod encode;
@@ -14,6 +15,7 @@ use config::Config;
 use syn::{DataStruct, DeriveInput};
 
 const CRATE_NAME: &str = "rasn";
+const INNER_SUBTYPE_CONSTRAINT_ATTR: &str = "inner_subtype_constraint";
 
 pub fn decode_derive_inner(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     let config = Config::from_attributes(&input)?;
@@ -124,4 +126,38 @@ pub fn asn_type_derive_inner(input: DeriveInput) -> syn::Result<proc_macro2::Tok
             ))
         }
     })
+}
+
+pub fn inner_subtype_constraint_derive_inner(
+    input: DeriveInput,
+) -> syn::Result<proc_macro2::TokenStream> {
+    let mut inner_subtype_constraint = None;
+
+    for attr in input.attrs {
+        if let Ok(metalist) = attr.meta.require_list() {
+            if let Some(ident) = &metalist.path.get_ident() {
+                if *ident == INNER_SUBTYPE_CONSTRAINT_ATTR {
+                    inner_subtype_constraint = Some(metalist.tokens.to_owned());
+                }
+            }
+        }
+    }
+    if let Some(tokens) = inner_subtype_constraint {
+        match input.data {
+            syn::Data::Struct(_) => component_constraints::derive_inner_subtype_constraint_impl(
+                &input.ident,
+                &input.data,
+                tokens,
+            ),
+            _ => Err(syn::Error::new(
+                input.ident.span(),
+                "Only constructed types are supported for deriving InnerSubtypeConstraint.",
+            )),
+        }
+    } else {
+        Err(syn::Error::new(
+            input.ident.span(),
+            format!("'{}' attribute not found.", INNER_SUBTYPE_CONSTRAINT_ATTR,),
+        ))
+    }
 }

@@ -1,4 +1,5 @@
 extern crate alloc;
+use crate::delegate;
 use crate::ts103097::extension_module::*;
 use bon::Builder;
 use rasn::error::InnerSubtypeConstraintError;
@@ -24,34 +25,6 @@ pub const IEEE1609_DOT2_OID: &Oid = Oid::const_new(&[
     2,    // major-version-2
     6,    // minor-version-6
 ]);
-
-/// A macro to implement `From` and `Deref` for a delegate type pair.
-#[macro_export]
-macro_rules! delegate {
-    ($from_type:ty, $to_type:ty) => {
-        impl From<$from_type> for $to_type {
-            fn from(item: $from_type) -> Self {
-                Self(item)
-            }
-        }
-        impl From<$to_type> for $from_type {
-            fn from(item: $to_type) -> Self {
-                item.0
-            }
-        }
-        impl core::ops::Deref for $to_type {
-            type Target = $from_type;
-            fn deref(&self) -> &Self::Target {
-                &self.0
-            }
-        }
-        impl core::ops::DerefMut for $to_type {
-            fn deref_mut(&mut self) -> &mut Self::Target {
-                &mut self.0
-            }
-        }
-    };
-}
 
 pub const CERT_EXT_ID_OPERATING_ORGANIZATION: ExtId = ExtId(1);
 pub const P2PCD8_BYTE_LEARNING_REQUEST_ID: ExtId = ExtId(1);
@@ -199,9 +172,12 @@ pub struct ToBeSignedData {
 /// # Canonicalization
 /// Subject to canonicalization for operations specified in 6.1.2.
 /// The canonicalization applies to the `Ieee1609Dot2Data`.
-#[derive(AsnType, Debug, Clone, Decode, Encode, PartialEq, Eq, Hash)]
+#[derive(AsnType, Decode, Encode, InnerSubtypeConstraint, Debug, Clone, PartialEq, Eq, Hash)]
 #[rasn(automatic_tags)]
 #[non_exhaustive]
+#[inner_subtype_constraint(
+    (data => present) or (extDataHash => present) or (omitted => present)
+)]
 pub struct SignedDataPayload {
     pub data: Option<Ieee1609Dot2Data>,
     #[rasn(identifier = "extDataHash")]
@@ -224,18 +200,6 @@ impl SignedDataPayload {
             omitted,
         }
         .validate_components()
-    }
-}
-
-impl InnerSubtypeConstraint for SignedDataPayload {
-    fn validate_components(self) -> Result<Self, InnerSubtypeConstraintError> {
-        if self.data.is_none() && self.ext_data_hash.is_none() && self.omitted.is_none() {
-            return Err(InnerSubtypeConstraintError::MissingAtLeastOneComponent {
-                type_name: "SignedDataPayload",
-                components: &["data", "ext_data_hash", "omitted"],
-            });
-        }
-        Ok(self)
     }
 }
 
@@ -894,7 +858,7 @@ pub struct CertificateBase {
     #[builder(default = CertificateBase::VERSION)]
     pub version: Uint8,
     #[rasn(identifier = "type")]
-    pub c_type: CertificateType,
+    pub r#type: CertificateType,
     pub issuer: IssuerIdentifier,
     #[rasn(identifier = "toBeSigned")]
     pub to_be_signed: ToBeSignedCertificate,
@@ -907,7 +871,7 @@ impl CertificateBase {
         matches!(
             &self,
             CertificateBase {
-                c_type: CertificateType::Implicit,
+                r#type: CertificateType::Implicit,
                 to_be_signed: ToBeSignedCertificate {
                     verify_key_indicator: VerificationKeyIndicator::ReconstructionValue(_),
                     ..
@@ -922,7 +886,7 @@ impl CertificateBase {
         matches!(
             self,
             CertificateBase {
-                c_type: CertificateType::Explicit,
+                r#type: CertificateType::Explicit,
                 to_be_signed: ToBeSignedCertificate {
                     verify_key_indicator: VerificationKeyIndicator::VerificationKey(_),
                     ..
@@ -1604,6 +1568,7 @@ pub mod crl {
         CrlSeries, HeaderInfo, Ieee1609Dot2Content, Ieee1609Dot2Data, SignedData,
         SignedDataPayload, ToBeSignedData,
     };
+    use crate::delegate;
     use rasn::error::InnerSubtypeConstraintError;
     use rasn::prelude::*;
 
@@ -1675,7 +1640,7 @@ pub mod crl {
             ) {
                 Ok(self)
             } else if signed_data_content.tbs_data.header_info.psid == *crl_psid {
-                Err(InnerSubtypeConstraintError::InvalidComponentValue { type_name: "SecuredCrl::Ieee1609Do2Content::SignedData::ToBeSignedData::HeaderInfo::Psid", component_name: "psid", details: alloc::format!("Expecting Psid value {crl_psid:?} for SecuredCrl") })
+                Err(InnerSubtypeConstraintError::InvalidComponentValue { type_name: "SecuredCrl::Ieee1609Do2Content::SignedData::ToBeSignedData::HeaderInfo::Psid", component_name: "psid", details: alloc::format!("Expecting Psid value {} for SecuredCrl", CrlPsid::CRL_PSID) })
             } else {
                 Err(InnerSubtypeConstraintError::InvalidCombination {
                     type_name: "SecuredCrl",
@@ -1683,12 +1648,12 @@ pub mod crl {
                 })
             }
         }
-        fn validate_and_decode_containing(
-            self,
-            _: rasn::Codec,
-        ) -> Result<Self, rasn::error::InnerSubtypeConstraintError> {
-            todo!("This type does not check constrained CrlContents content yet")
-        }
+        // fn validate_and_decode_containing(
+        //     self,
+        //     _: rasn::Codec,
+        // ) -> Result<Self, rasn::error::InnerSubtypeConstraintError> {
+        //     todo!("This type does not check constrained CrlContents content yet")
+        // }
     }
     /// Service Specific Permissions (SSP) structure for Certificate Revocation List (CRL) signing.
     ///
@@ -1751,6 +1716,7 @@ pub mod crl {
 pub mod peer2peer {
     use super::base_types::Uint8;
     use super::Certificate;
+    use crate::delegate;
     use bon::Builder;
     use rasn::prelude::*;
     /// A Peer-to-Peer PDU structure for IEEE 1609.2 certificate chain responses.
@@ -1951,7 +1917,7 @@ mod tests {
                                 ImplicitCertificate::new(
                                     CertificateBase::builder()
                                         .version(3)
-                                        .c_type(CertificateType::Implicit)
+                                        .r#type(CertificateType::Implicit)
                                         .issuer(IssuerIdentifier::Sha256AndDigest(HashedId8(
                                             "!\"#$%&'(".as_bytes().try_into().unwrap()
                                         )))

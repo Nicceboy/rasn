@@ -37,7 +37,7 @@ pub fn build_sample() -> Ieee1609Dot2Data {
                         ImplicitCertificate::new(
                             CertificateBase::builder()
                                 .version(3)
-                                .c_type(CertificateType::Implicit)
+                                .r#type(CertificateType::Implicit)
                                 .issuer(IssuerIdentifier::Sha256AndDigest(HashedId8(
                                     "!\"#$%&'(".as_bytes().try_into().unwrap(),
                                 )))
@@ -153,9 +153,11 @@ fn oer_enc_dec(c: &mut Criterion) {
         "RASN/ encode/decode OER ieee1609dot2 - bsm with certificate",
         |b| {
             b.iter(|| {
-                rasn::coer::encode_buf(&cert, &mut buffer).unwrap();
-                rasn::coer::decode::<Ieee1609Dot2Data>(&buffer).unwrap();
-                buffer.clear();
+                for _ in 0..10_000 {
+                    rasn::oer::encode_buf(&cert, &mut buffer).unwrap();
+                    rasn::oer::decode::<Ieee1609Dot2Data>(&buffer).unwrap();
+                    buffer.clear();
+                }
             })
         },
     );

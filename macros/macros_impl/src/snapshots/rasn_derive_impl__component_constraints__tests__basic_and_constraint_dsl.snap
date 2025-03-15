@@ -1,0 +1,35 @@
+---
+source: macros/macros_impl/src/component_constraints.rs
+expression: formatted
+---
+impl InnerSubtypeConstraint for TestStruct {
+    fn validate_components(self) -> Result<Self, InnerSubtypeConstraintError> {
+        {
+            let __constraint_ok = if self.data.is_some() {
+                true
+            } else {
+                return Err(InnerSubtypeConstraintError::MissingRequiredComponent {
+                    type_name: stringify!(TestStruct),
+                    components: &[stringify!(data)],
+                });
+            };
+            let __constraint_ok = if self.ext_data_hash.is_some() {
+                true
+            } else {
+                return Err(InnerSubtypeConstraintError::MissingRequiredComponent {
+                    type_name: stringify!(TestStruct),
+                    components: &[stringify!(extDataHash)],
+                });
+            };
+            let __constraint_ok = if self.omitted.is_some() {
+                true
+            } else {
+                return Err(InnerSubtypeConstraintError::MissingRequiredComponent {
+                    type_name: stringify!(TestStruct),
+                    components: &[stringify!(omitted)],
+                });
+            };
+        }
+        Ok(self)
+    }
+}

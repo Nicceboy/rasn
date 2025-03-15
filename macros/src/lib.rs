@@ -60,3 +60,15 @@ pub fn asn_type_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }
+
+/// An automatic derive of the `InnerSubtypeConstraint` trait.
+#[proc_macro_derive(InnerSubtypeConstraint, attributes(inner_subtype_constraint))]
+pub fn inner_component_constraint_derive(
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let derive_input = parse_macro_input!(input as DeriveInput);
+
+    rasn_derive_impl::inner_subtype_constraint_derive_inner(derive_input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
