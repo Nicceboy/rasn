@@ -1,0 +1,29 @@
+---
+source: macros/macros_impl/src/component_constraints.rs
+assertion_line: 903
+expression: formatted
+---
+impl InnerSubtypeConstraint for ImplicitCertificate {
+    fn validate_components(self) -> Result<Self, InnerSubtypeConstraintError> {
+        let __constraint_to_be_signed_ok = if __constraint_verify_key_indicator_ok {
+            true
+        } else {
+            return Err(InnerSubtypeConstraintError::InvalidCombination {
+                type_name: stringify!(ImplicitCertificate),
+                details: concat!(
+                    "Invalid component combination in ", stringify!(ImplicitCertificate),
+                    " in inner block ", stringify!(ToBeSignedCertificate)
+                ),
+            });
+        };
+        let __constraint_signature_ok = if self.0.signature.is_none() {
+            true
+        } else {
+            return Err(InnerSubtypeConstraintError::UnexpectedComponentPresent {
+                type_name: stringify!(ImplicitCertificate),
+                component_name: stringify!(signature),
+            });
+        };
+        Ok(self)
+    }
+}

@@ -18,7 +18,7 @@ impl InnerSubtypeConstraint for TestStruct {
             } else {
                 return Err(InnerSubtypeConstraintError::MissingRequiredComponent {
                     type_name: stringify!(TestStruct),
-                    components: &[stringify!(extDataHash)],
+                    components: &[stringify!(ext_data_hash)],
                 });
             };
             let __constraint_ok = if self.omitted.is_some() {

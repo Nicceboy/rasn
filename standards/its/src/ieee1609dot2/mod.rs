@@ -866,36 +866,6 @@ pub struct CertificateBase {
 }
 impl CertificateBase {
     pub const VERSION: u8 = 3;
-    #[must_use]
-    pub const fn is_implicit(&self) -> bool {
-        matches!(
-            &self,
-            CertificateBase {
-                r#type: CertificateType::Implicit,
-                to_be_signed: ToBeSignedCertificate {
-                    verify_key_indicator: VerificationKeyIndicator::ReconstructionValue(_),
-                    ..
-                },
-                signature: None,
-                ..
-            }
-        )
-    }
-    #[must_use]
-    pub const fn is_explicit(&self) -> bool {
-        matches!(
-            self,
-            CertificateBase {
-                r#type: CertificateType::Explicit,
-                to_be_signed: ToBeSignedCertificate {
-                    verify_key_indicator: VerificationKeyIndicator::VerificationKey(_),
-                    ..
-                },
-                signature: Some(_),
-                ..
-            }
-        )
-    }
 }
 
 /// Indicates whether a certificate is explicit or implicit.
@@ -915,25 +885,20 @@ pub enum CertificateType {
 
 /// This is a profile of the CertificateBase structure providing all
 ///  the fields necessary for an implicit certificate, and no others.
-#[derive(AsnType, Debug, Clone, Decode, Encode, PartialEq, Eq, Hash)]
+#[derive(AsnType, InnerSubtypeConstraint, Debug, Clone, Decode, Encode, PartialEq, Eq, Hash)]
 #[rasn(delegate)]
+#[inner_subtype_constraint(
+    r#type => enumerated(CertificateType::Implicit),
+    toBeSigned => constructed(ToBeSignedCertificate) {
+        verifyKeyIndicator => choice(VerificationKeyIndicator::ReconstructionValue)
+    },
+    signature => absent
+)]
 pub struct ImplicitCertificate(CertificateBase);
 
 impl ImplicitCertificate {
     pub fn new(data: CertificateBase) -> Result<Self, InnerSubtypeConstraintError> {
         Self(data).validate_components()
-    }
-}
-impl InnerSubtypeConstraint for ImplicitCertificate {
-    fn validate_components(self) -> Result<Self, InnerSubtypeConstraintError> {
-        if self.0.is_implicit() {
-            Ok(self)
-        } else {
-            Err(InnerSubtypeConstraintError::InvalidCombination {
-                type_name: "ImplicitCertificate",
-                details: "CertificateBase is not implicit certificate",
-            })
-        }
     }
 }
 
@@ -947,8 +912,15 @@ impl core::ops::Deref for ImplicitCertificate {
 }
 
 /// This is a profile of the CertificateBase structure providing all the fields necessary for an explicit certificate, and no others.
-#[derive(AsnType, Debug, Clone, Decode, Encode, PartialEq, Eq, Hash)]
+#[derive(AsnType, InnerSubtypeConstraint, Debug, Clone, Decode, Encode, PartialEq, Eq, Hash)]
 #[rasn(delegate)]
+#[inner_subtype_constraint(
+    r#type => enumerated(CertificateType::Explicit),
+    toBeSigned => constructed(ToBeSignedCertificate) {
+        verifyKeyIndicator => choice(VerificationKeyIndicator::VerificationKey)
+    },
+    signature => absent
+)]
 pub struct ExplicitCertificate(CertificateBase);
 
 impl ExplicitCertificate {
@@ -957,18 +929,6 @@ impl ExplicitCertificate {
     }
 }
 
-impl InnerSubtypeConstraint for ExplicitCertificate {
-    fn validate_components(self) -> Result<Self, InnerSubtypeConstraintError> {
-        if self.0.is_explicit() {
-            Ok(self)
-        } else {
-            Err(InnerSubtypeConstraintError::InvalidCombination {
-                type_name: "ExplicitCertificate",
-                details: "CertificateBase is not explicit certificate",
-            })
-        }
-    }
-}
 impl core::ops::Deref for ExplicitCertificate {
     type Target = CertificateBase;
 

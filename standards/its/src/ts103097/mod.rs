@@ -2,7 +2,9 @@ extern crate alloc;
 use alloc::string::ToString;
 /// ASN.1 definitions for ETSI TS 103 097 extension module
 pub mod extension_module;
-use crate::ieee1609dot2::{Certificate, CertificateId, HashedData, Ieee1609Dot2Data};
+use crate::ieee1609dot2::{
+    Certificate, CertificateId, HashedData, Ieee1609Dot2Data, ToBeSignedCertificate,
+};
 
 use rasn::error::InnerSubtypeConstraintError;
 use rasn::prelude::*;
@@ -10,8 +12,18 @@ use rasn::prelude::*;
 pub const ETSI_TS103097_MODULE_OID: &Oid = Oid::const_new(&[0, 4, 0, 5, 5, 103_097, 1, 3, 1]);
 
 /// ETSI TS 103 097 certificate
-#[derive(Debug, Clone, AsnType, Encode, Decode, PartialEq, Eq)]
+#[derive(Debug, InnerSubtypeConstraint, Clone, AsnType, Encode, Decode, PartialEq, Eq)]
 #[rasn(delegate)]
+#[inner_subtype_constraint(
+    toBeSigned => constructed(ToBeSignedCertificate) {
+        id => choice(CertificateId) {
+            linkageData => absent,
+            binaryId => absent,
+        },
+    },
+    certRequestPermissions => absent,
+    canRequestRollover => absent
+)]
 pub struct EtsiTs103097Certificate(Certificate);
 
 impl core::ops::Deref for EtsiTs103097Certificate {
@@ -29,39 +41,39 @@ impl TryFrom<Certificate> for EtsiTs103097Certificate {
     }
 }
 
-impl InnerSubtypeConstraint for EtsiTs103097Certificate {
-    fn validate_components(self) -> Result<Self, rasn::error::InnerSubtypeConstraintError> {
-        let tbs = &self.0.to_be_signed;
-        let id = &tbs.id;
+// impl InnerSubtypeConstraint for EtsiTs103097Certificate {
+//     fn validate_components(self) -> Result<Self, rasn::error::InnerSubtypeConstraintError> {
+//         let tbs = &self.0.to_be_signed;
+//         let id = &tbs.id;
 
-        if !matches!(id, CertificateId::Name(_)) {
-            return Err(
-                rasn::error::InnerSubtypeConstraintError::InvalidComponentValue {
-                    type_name: "EtsiTs103097Certificate::toBeSignedCertificate::CertificateId",
-                    component_name: "CertificateId",
-                    details: "Only CertificateId::Name is permitted".to_string(),
-                },
-            );
-        }
-        if tbs.cert_request_permissions.is_some() {
-            return Err(
-                rasn::error::InnerSubtypeConstraintError::UnexpectedComponentPresent {
-                    type_name: "EtsiTs103097Certificate::toBeSignedCertificate",
-                    component_name: "certRequestPermissions",
-                },
-            );
-        }
-        if tbs.can_request_rollover.is_some() {
-            return Err(
-                rasn::error::InnerSubtypeConstraintError::UnexpectedComponentPresent {
-                    type_name: "EtsiTs103097Certificate::toBeSignedCertificate",
-                    component_name: "canRequestRollover",
-                },
-            );
-        }
-        Ok(self)
-    }
-}
+//         if !matches!(id, CertificateId::Name(_)) {
+//             return Err(
+//                 rasn::error::InnerSubtypeConstraintError::InvalidComponentValue {
+//                     type_name: "EtsiTs103097Certificate::toBeSignedCertificate::CertificateId",
+//                     component_name: "CertificateId",
+//                     details: "Only CertificateId::Name is permitted".to_string(),
+//                 },
+//             );
+//         }
+//         if tbs.cert_request_permissions.is_some() {
+//             return Err(
+//                 rasn::error::InnerSubtypeConstraintError::UnexpectedComponentPresent {
+//                     type_name: "EtsiTs103097Certificate::toBeSignedCertificate",
+//                     component_name: "certRequestPermissions",
+//                 },
+//             );
+//         }
+//         if tbs.can_request_rollover.is_some() {
+//             return Err(
+//                 rasn::error::InnerSubtypeConstraintError::UnexpectedComponentPresent {
+//                     type_name: "EtsiTs103097Certificate::toBeSignedCertificate",
+//                     component_name: "canRequestRollover",
+//                 },
+//             );
+//         }
+//         Ok(self)
+//     }
+// }
 
 // #[derive(InnerSubtypeConstraint)]
 // #[inner_subtype_constraint(
@@ -143,7 +155,7 @@ impl InnerSubtypeConstraint for EtsiTs103097Certificate {
 //                     }
 //                 },
 //                 signer => {
-//                     certificate => (EtsiTs103097Certificate, size(1))
+//                     certificate => (EtsiTs103097Certificate) and (size(1))
 //                 }
 //             }
 //         } or {
@@ -184,12 +196,12 @@ impl InnerSubtypeConstraint for EtsiTs103097Certificate {
 
 // #[derive(AsnType, Debug, Clone, Decode, Encode, PartialEq, Eq, Hash)]
 // #[rasn(automatic_tags)]
-//         let dsl = quote! {
-// r#type => choice(CertificateType::implicit),
-// toBeSigned => {
-//     verifyKeyIndicator => choice(VerificationKeyIndicator::reconstructionValue)
-// },
-// signature => absent
+//  let dsl = quote! {
+//     r#type => choice(CertificateType::implicit),
+//     toBeSigned => {
+//         verifyKeyIndicator => choice(VerificationKeyIndicator::reconstructionValue)
+//     },
+//     signature => absent
 // };
 // pub struct CertificateBase2 {
 //     #[rasn(value("3"))]

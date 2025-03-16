@@ -1,0 +1,23 @@
+---
+source: macros/macros_impl/src/component_constraints.rs
+expression: formatted
+---
+impl InnerSubtypeConstraint for ImplicitCertificate {
+    fn validate_components(self) -> Result<Self, InnerSubtypeConstraintError> {
+        if !matches!(
+            & self.0, CertificateBase { r#type : CertificateType::Implicit, to_be_signed
+            : ToBeSignedCertificate { verify_key_indicator :
+            VerificationKeyIndicator::ReconstructionValue(_), .. }, signature : None, ..
+            }
+        ) {
+            return Err(InnerSubtypeConstraintError::InvalidCombination {
+                type_name: stringify!(ImplicitCertificate),
+                details: concat!(
+                    "Invalid component combination in ", stringify!(ImplicitCertificate),
+                    " which is alias for ", stringify!(CertificateBase)
+                ),
+            });
+        }
+        Ok(self)
+    }
+}
