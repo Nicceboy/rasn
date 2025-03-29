@@ -3,7 +3,7 @@
 use super::IntegerType;
 use num_bigint::BigInt;
 
-/// A marker trait for types that have ASN.1 inner subtype constraints.
+/// A marker trait with validation methods for types that have ASN.1 inner subtype constraints.
 pub trait InnerSubtypeConstraint: Sized {
     /// Validates the inner subtype constraints and returns the type on success.
     /// Does not attempt to decode internal ASN.1 `CONTAINING` constraints as a marked type. See `validate_and_decode_containing` for CONTAINING validation.

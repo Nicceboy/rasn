@@ -6,6 +6,7 @@ use snafu::Snafu;
 pub enum InnerSubtypeConstraintError {
     /// General error for subtype constraint violation: invalid inner component combination in a newtype.
     /// Mostly useful when there are specific variants for a base type, e.g. implicit or explicit variants.
+    /// Other use discouraged.
     #[snafu(display("Invalid component combination in {component_path}: {details}"))]
     SubtypeConstraintViolation {
         /// The path to the component where the invalid component combination was found.

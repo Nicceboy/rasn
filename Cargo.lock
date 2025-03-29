@@ -1146,7 +1146,7 @@ dependencies = [
 
 [[package]]
 name = "rasn-its"
-version = "0.26.0"
+version = "0.26.1"
 dependencies = [
  "bon",
  "pretty_assertions",
