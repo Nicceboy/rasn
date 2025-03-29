@@ -1,4 +1,4 @@
-// #![cfg_attr(not(test), no_std)]
+#![cfg_attr(not(test), no_std)]
 
 /// ASN.1 definitions for ETSI TS 103 097
 pub mod ts103097;
